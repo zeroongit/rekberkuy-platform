@@ -1,4 +1,4 @@
-module rekberkuy/core-backend
+module rekberkuy/core-service
 
 go 1.25.0
 

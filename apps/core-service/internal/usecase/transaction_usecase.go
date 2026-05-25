@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"time"
 
-	"rekberkuy/core-backend/internal/domain"
+	"rekberkuy/core-service/internal/domain"
 )
 
 type transactionUsecase struct {

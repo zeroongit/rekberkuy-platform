@@ -1,19 +1,39 @@
-# You can override the included template(s) by including variable overrides
-# SAST customization: https://docs.gitlab.com/user/application_security/sast/#available-cicd-variables
-# Secret Detection customization: https://docs.gitlab.com/user/application_security/secret_detection/pipeline/configure/
-# Dependency Scanning customization: https://docs.gitlab.com/user/application_security/dependency_scanning/dependency_scanning_sbom/#customizing-analyzer-behavior
-# Container Scanning customization: https://docs.gitlab.com/user/application_security/container_scanning/#customizing-analyzer-behavior
-# Note that environment variables can be set in several places
-# See https://docs.gitlab.com/ci/variables/#cicd-variable-precedence
 stages:
-- test
-- secret-detection
-sast:
+  - test
+  - qa-automation
+
+# Stage 1: Menguji Unit Test Backend Go
+test_backend:
   stage: test
-include:
-- template: Security/SAST.gitlab-ci.yml
-- template: Security/Secret-Detection.gitlab-ci.yml
-variables:
-  SECRET_DETECTION_ENABLED: 'true'
-secret_detection:
-  stage: secret-detection
+  image: golang:1.25 
+  script:
+    - cd apps/core-backend
+    - go mod download
+    - go test -v ./...
+
+# Stage 2: Menguji Smart Contract Solidity
+test_blockchain:
+  stage: test
+  image: node:20
+  script:
+    - cd blockchain
+    - npm install
+    - npx hardhat test
+
+# Stage 3: Menguji Unit Test Frontend Next.js (Jest)
+test_frontend:
+  stage: test
+  image: node:20
+  script:
+    - cd apps/web-frontend
+    - npm install
+    - npm run test
+
+# Stage 4: Menjalankan Playwright E2E (Akan aktif jika semua unit test di atas lulus)
+e2e_playwright:
+  stage: qa-automation
+  image: mcr.microsoft.com/playwright:v1.42.0-jammy
+  script:
+    - cd e2e-qa
+    - npm install
+    - npx playwright test

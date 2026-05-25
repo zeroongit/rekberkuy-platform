@@ -1,7 +1,7 @@
 package usecase
 
 import (
-	"rekberkuy/core-backend/internal/domain"
+	"rekberkuy/core-service/internal/domain"
 )
 
 type FinanceCalculator struct{}

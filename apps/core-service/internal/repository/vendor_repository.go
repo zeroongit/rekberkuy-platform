@@ -6,7 +6,7 @@ import (
 	"errors"
 	"fmt"
 
-	"rekberkuy/core-backend/internal/domain"
+	"rekberkuy/core-service/internal/domain"
 )
 
 type vendorRepository struct {
