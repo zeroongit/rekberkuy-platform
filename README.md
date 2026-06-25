@@ -1,16 +1,14 @@
 # 🔐 RekberKuy Platform
 
 > Platform Rekening Bersama (Escrow) modern untuk transaksi **Barang**, **Jasa**, dan **Event** yang aman, transparan, dan terpercaya.
-
-[![Next.js](https://img.shields.io/badge/Next.js-v16-black?style=flat-square&logo=next.js)](https://nextjs.org/)
-[![Go](https://img.shields.io/badge/Go-1.25-00ADD8?style=flat-square&logo=go)](https://golang.org/)
-[![Avalanche](https://img.shields.io/badge/Blockchain-Avalanche-E84142?style=flat-square&logo=avalanche)](https://www.avax.network/)
-[![Supabase](https://img.shields.io/badge/Supabase-PostgreSQL-3ECF8E?style=flat-square&logo=supabase)](https://supabase.com/)
-[![License](https://img.shields.io/badge/License-Proprietary-red?style=flat-square)]()
-
 ---
 
-## 📖 Tentang RekberKuy
+> [!WARNING]
+> **Setiap perubahan kode wajib disertai unit test.**
+> Merge Request tanpa test tidak akan di-review dan tidak akan di-merge ke branch `develop` maupun `main`.
+> Lihat panduan lengkap di bagian [🧪 Testing](#-testing) dan [🤝 Kontribusi](#-kontribusi).
+
+---
 
 **RekberKuy** adalah platform escrow all-in-one yang menghubungkan pembeli dan penjual dalam ekosistem transaksi yang aman. Platform ini menjalankan tiga domain utama secara bersamaan:
 
@@ -20,7 +18,7 @@
 | 🛠️ **Jasa** | Perantara pembayaran antara klien dan penyedia jasa profesional |
 | 🎪 **Event** | Sistem pengadaan event lengkap dengan marketplace vendor terintegrasi |
 
-Dana pembeli akan ditahan oleh sistem dan hanya dilepaskan ke penjual/penyedia layanan setelah transaksi dikonfirmasi selesai oleh semua pihak. Setiap transaksi dicatat secara permanen di **blockchain Avalanche** melalui smart contract yang berfungsi murni sebagai **audit log** — memastikan seluruh riwayat transaksi transparan, tidak dapat dimanipulasi, dan dapat diverifikasi oleh siapa pun.
+Dana pembeli akan ditahan oleh sistem dan hanya dilepaskan ke penjual/penyedia layanan setelah transaksi dikonfirmasi selesai oleh semua pihak. Setiap transaksi dicatat secara permanen di **blockchain Avalanche** melalui smart contract yang berfungsi murni sebagai **audit log**. Karena regulasi di Indonesia belum melegalkan pembayaran kripto, sistem ini menerapkan **Gasless Transaction**. Seluruh proses on-chain berjalan di latar belakang, di mana backend platform bertindak sebagai *relayer* yang mensubsidi *gas fee*, sehingga pengguna sama sekali tidak memerlukan *wallet crypto*.
 
 ---
 
@@ -87,10 +85,12 @@ rekberkuy-platform/
 │
 ├── docs/
 │   └── usecase.md                        # Dokumentasi use case & alur bisnis
+│   └── concept.md                        # Dokumentasi konsep bisnis
 │
 ├── .gitlab-ci.yml                        # CI/CD pipeline GitLab
 ├── .gitignore
 └── README.md
+└── ROADMAP.md                            # Dokumentasi alur pengembangan & roadmap
 ```
 
 ---
@@ -174,7 +174,7 @@ rekberkuy-platform/
 - Kalkulasi biaya & komisi otomatis (`finance_calculator`)
 - Dashboard transaksi & riwayat lengkap
 - Admin panel untuk moderasi & manajemen platform
-- Smart contract audit log di Avalanche — setiap transaksi tercatat permanen & transparan di blockchain
+- Smart contract audit log di Avalanche (Gasless Transaction) — setiap transaksi tercatat permanen & transparan di *background* tanpa membebani pengguna dengan *gas fee* atau keharusan memiliki dompet kripto
 
 ---
 
@@ -236,10 +236,22 @@ Aplikasi akan berjalan di:
 
 ## 🧪 Testing
 
+> [!IMPORTANT]
+> **Aturan wajib:** Setiap perubahan kode — baik fitur baru, perbaikan bug, maupun refactor — **harus diikuti dengan unit test yang relevan**. Kode tanpa test dianggap belum selesai.
+>
+> Cakupan minimum yang wajib dipenuhi sebelum membuat Merge Request:
+> - **Backend (Go):** Setiap `usecase` dan `repository` baru wajib punya file `*_test.go`
+> - **Frontend (Next.js):** Setiap komponen dan utility baru wajib punya file `*.test.tsx` / `*.test.ts`
+> - **Smart Contract:** Setiap fungsi kontrak baru wajib punya test case di `blockchain/test/`
+> - **Alur kritis** (transaksi, wallet, escrow): wajib punya skenario E2E di `e2e-qa/`
+
 ```bash
 # Unit test frontend (Jest)
-cd apps/web-frontend
+cd apps/dashboard-web
 npm run test
+
+# Unit test frontend dengan coverage report
+npm run test -- --coverage
 
 # E2E & QA Automation
 cd e2e-qa
@@ -248,6 +260,14 @@ npm run test
 # Test smart contract (audit log)
 cd blockchain
 npx hardhat test
+
+# Unit test backend (Go)
+cd apps/core-service
+go test ./...
+
+# Unit test backend dengan coverage
+go test ./... -coverprofile=coverage.out
+go tool cover -html=coverage.out
 
 # Test backend API
 # Import koleksi Postman dari /docs/ dan jalankan via Postman
@@ -405,9 +425,15 @@ domain/            ← definisi entity & interface
 Project ini bersifat **private** dan hanya untuk tim internal RekberKuy. Untuk berkontribusi:
 
 1. Buat branch baru dari `develop`: `git checkout -b feature/nama-fitur`
-2. Commit perubahan: `git commit -m "feat: deskripsi perubahan"`
-3. Push ke branch: `git push origin feature/nama-fitur`
-4. Buat Merge Request ke branch `develop`
+2. Tulis kode perubahan
+3. **Tulis unit test untuk setiap kode yang ditambahkan atau diubah** ← wajib
+4. Pastikan semua test lolos: `go test ./...` (backend) atau `npm run test` (frontend)
+5. Commit perubahan: `git commit -m "feat: deskripsi perubahan"`
+6. Push ke branch: `git push origin feature/nama-fitur`
+7. Buat Merge Request ke branch `develop`
+
+> [!CAUTION]
+> Merge Request yang tidak menyertakan unit test **akan langsung ditolak** tanpa proses review lebih lanjut. Pastikan setiap fungsi, usecase, dan komponen baru memiliki test yang memadai sebelum membuka MR.
 
 ### Konvensi Commit
 
@@ -421,17 +447,13 @@ style:    Formatting (tidak mengubah logika)
 refactor: Refactoring kode
 test:     Menambah atau memperbaiki test
 chore:    Update dependency, konfigurasi, dll
+Selalu branch dari `develop` (`feature/nama-fitur`).
 ```
 
 ---
 
 ## 📄 Lisensi
 
-Copyright © 2025 RekberKuy. All rights reserved. — **Proprietary & Confidential.**
+Copyright © 2026 RekberKuy. All rights reserved. — **Proprietary & Confidential.**
 
 ---
-
-<div align="center">
-  <p>Dibuat dengan ❤️ oleh Tim RekberKuy</p>
-  <p><strong>Transaksi Aman, Bisnis Lancar.</strong></p>
-</div>

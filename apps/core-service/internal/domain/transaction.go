@@ -4,15 +4,12 @@ import (
 	"time"
 )
 
-// Mengunci aturan finansial Rekberkuy di level kode Go
 const (
-	MaxMemberEventLimit = 10000000 // Rp 10 Juta
-	QRISTotalFeePercent = 0.01     // 1%
-	WithdrawFeeToUser   = 7500     // Rp 7.500
-
-	// Kunci Tambahan untuk Mengatasi Error di Usecase
-	FeeGoodsRekberPay    = 2500 // Sesuai aturan 1 (Promo)
-	FeeGoodsNonRekberPay = 5000 // Sesuai aturan 1 (Non-RekberPay)
+	MaxMemberEventLimit  = 10000000 
+	QRISTotalFeePercent  = 0.01     
+	WithdrawFeeToUser    = 7500     
+	FeeGoodsRekberPay    = 2500 
+	FeeGoodsNonRekberPay = 5000 
 )
 
 type RekberType string
@@ -30,94 +27,99 @@ const (
 	StatusRefunded       TransactionStatus = "REFUNDED"
 )
 
-// Transaction mewakili tabel master 'transactions'
 type Transaction struct {
-	ID                 string            `json:"id"`
-	BuyerID            string            `json:"buyer_id"`
-	SellerID           string            `json:"seller_id"`
-	Type               RekberType        `json:"type"`
-	Status             TransactionStatus `json:"status"`
-	AmountBase         int64             `json:"amount_base"`
-	ShippingFee        int64             `json:"shipping_fee"`
-	ServiceFee         int64             `json:"service_fee"`
-	MidtransFee        int64             `json:"midtrans_fee"`
-	AmountGross        int64             `json:"amount_gross"`
-	AmountNet          int64             `json:"amount_net"`
-	MidtransOrderID    string            `json:"midtrans_order_id"`
-	IdempotencyKey     string            `json:"idempotency_key"`
-	PaymentMethod      string            `json:"payment_method"` // MIDTRANS atau REKBERPAY
-	BlockchainTxHash   *string           `json:"blockchain_tx_hash,omitempty"`
+	ID                 string            `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	BuyerID            string            `gorm:"type:uuid;not null;index" json:"buyer_id"`
+	SellerID           string            `gorm:"type:uuid;not null;index" json:"seller_id"`
+	Buyer              UserProfile       `gorm:"foreignKey:BuyerID"`
+	Seller             UserProfile       `gorm:"foreignKey:SellerID"`
+	Type               RekberType        `gorm:"type:varchar(50);not null" json:"type"`
+	Status             TransactionStatus `gorm:"type:varchar(50);not null;default:'WAITING_PAYMENT'" json:"status"`
+	AmountBase         int64             `gorm:"type:bigint;not null" json:"amount_base"`
+	ShippingFee        int64             `gorm:"type:bigint;not null;default:0" json:"shipping_fee"`
+	ServiceFee         int64             `gorm:"type:bigint;not null" json:"service_fee"`
+	MidtransFee        int64             `gorm:"type:bigint;not null" json:"midtrans_fee"`
+	AmountGross        int64             `gorm:"type:bigint;not null" json:"amount_gross"`
+	AmountNet          int64             `gorm:"type:bigint;not null" json:"amount_net"`
+	MidtransOrderID    string            `gorm:"type:varchar(255);not null;unique" json:"midtrans_order_id"`
+	IdempotencyKey     string            `gorm:"type:varchar(255);not null;unique" json:"idempotency_key"`
+	PaymentMethod      string            `gorm:"type:varchar(100);not null" json:"payment_method"`
+	BlockchainTxHash   *string           `gorm:"type:varchar(255);unique" json:"blockchain_tx_hash,omitempty"`
 	BlockchainLoggedAt *time.Time        `json:"blockchain_logged_at,omitempty"`
-	CreatedAt          time.Time         `json:"created_at"`
-	UpdatedAt          time.Time         `json:"updated_at"`
+	CreatedAt          time.Time         `gorm:"default:now()" json:"created_at"`
+	UpdatedAt          time.Time         `gorm:"default:now()" json:"updated_at"`
 }
 
-// TransactionGoods mewakili tabel 'transaction_goods' (Lini 1)
 type TransactionGoods struct {
-	TransactionID          string     `json:"transaction_id"`
-	ShippingCourier        string     `json:"shipping_courier"`
-	ShippingTrackingNumber *string    `json:"shipping_tracking_number,omitempty"`
-	ShippingAddress        string     `json:"shipping_address"`
-	AutoConfirmDeadline    time.Time  `json:"auto_confirm_deadline"`
+	TransactionID          string      `gorm:"type:uuid;primaryKey;not null" json:"transaction_id"`
+	Transaction            Transaction `gorm:"foreignKey:TransactionID;constraint:OnDelete:CASCADE"`
+	ShippingCourier        string      `gorm:"type:varchar(100);not null" json:"shipping_courier"`
+	ShippingTrackingNumber *string     `gorm:"type:varchar(255)" json:"shipping_tracking_number,omitempty"`
+	ShippingAddress        string      `gorm:"type:text;not null" json:"shipping_address"`
+	AutoConfirmDeadline    time.Time   `gorm:"not null" json:"auto_confirm_deadline"`
 }
 
-// TransactionServices mewakili tabel 'transaction_services' (Lini 2)
 type TransactionServices struct {
-	TransactionID   string    `json:"transaction_id"`
-	ProjectDeadline time.Time `json:"project_deadline"`
-	BriefDescription string   `json:"brief_description"`
+	TransactionID    string      `gorm:"type:uuid;primaryKey;not null" json:"transaction_id"`
+	Transaction      Transaction `gorm:"foreignKey:TransactionID;constraint:OnDelete:CASCADE"`
+	ProjectDeadline  time.Time   `gorm:"not null" json:"project_deadline"`
+	BriefDescription string      `gorm:"type:text" json:"brief_description"`
 }
 
-// ServiceMilestone mewakili tabel 'service_milestones' (Escrow 50:50)
 type ServiceMilestone struct {
-	ID            string     `json:"id"`
-	TransactionID string     `json:"transaction_id"`
-	MilestoneIndex int       `json:"milestone_index"`
-	Title         string     `json:"title"`
-	Amount        int64      `json:"amount"`
-	Status        string     `json:"status"` // PENDING, RELEASED
-	ReleasedAt    *time.Time `json:"released_at,omitempty"`
-	CreatedAt     time.Time  `json:"created_at"`
+	ID            string              `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	TransactionID string              `gorm:"type:uuid;not null;index" json:"transaction_id"`
+	ServiceTx     TransactionServices `gorm:"foreignKey:TransactionID;constraint:OnDelete:CASCADE"`
+	MilestoneIndex int                 `gorm:"type:integer;not null" json:"milestone_index"`
+	Title         string              `gorm:"type:varchar(255);not null" json:"title"`
+	Amount        int64               `gorm:"type:bigint;not null" json:"amount"`
+	Status        string              `gorm:"type:varchar(50);not null;default:'PENDING'" json:"status"`
+	ReleasedAt    *time.Time          `json:"released_at,omitempty"`
+	CreatedAt     time.Time           `gorm:"default:now()" json:"created_at"`
 }
 
-// TransactionEvents mewakili tabel 'transaction_events' (Lini 3)
 type TransactionEvents struct {
-	TransactionID      string    `json:"transaction_id"`
-	EventName          string    `json:"event_name"`
-	EventStartTime     time.Time `json:"event_start_time"`
-	EventEndTime       time.Time `json:"event_end_time"`
-	TicketQuantityTotal int      `json:"ticket_quantity_total"`
+	TransactionID       string      `gorm:"type:uuid;primaryKey;not null" json:"transaction_id"`
+	Transaction         Transaction `gorm:"foreignKey:TransactionID;constraint:OnDelete:CASCADE"`
+	EventName           string      `gorm:"type:varchar(255);not null" json:"event_name"`
+	EventStartTime      time.Time   `gorm:"not null" json:"event_start_time"`
+	EventEndTime        time.Time   `gorm:"not null" json:"event_end_time"`
+	TicketQuantityTotal int         `gorm:"type:integer;not null;default:0" json:"ticket_quantity_total"`
 }
 
-// EventVendorPayout mewakili tabel 'event_vendor_payouts' (Split 30:70 ke Vendor)
 type EventVendorPayout struct {
-	ID                    string    `json:"id"`
-	TransactionID         string    `json:"transaction_id"`
-	VendorName            string    `json:"vendor_name"`
-	VendorBankName        string    `json:"vendor_bank_name"`
-	VendorAccountNumber   string    `json:"vendor_account_number"`
-	AmountRequested       int64     `json:"amount_requested"`
-	ExpenseDescription    string    `json:"expense_description"`
-	InvoiceFileURL        string    `json:"invoice_file_url"`
-	PayoutPhase           string    `json:"payout_phase"` // OPERATIONAL_DP, FINAL_SETTLEMENT
-	Status                string    `json:"status"`       // PENDING, APPROVED, REJECTED
-	IsDisbursedByMidtrans bool      `json:"is_disbursed_by_midtrans"`
-	ReviewedBy            *string   `json:"reviewed_by,omitempty"`
-	ReviewedAt            *time.Time `json:"reviewed_at,omitempty"`
-	CreatedAt             time.Time `json:"created_at"`
+	ID                    string            `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	TransactionID         string            `gorm:"type:uuid;not null;index" json:"transaction_id"`
+	EventTx               TransactionEvents `gorm:"foreignKey:TransactionID;constraint:OnDelete:CASCADE"`
+	VendorName            string            `gorm:"type:varchar(255);not null" json:"vendor_name"`
+	VendorBankName        string            `gorm:"type:varchar(100);not null" json:"vendor_bank_name"`
+	VendorAccountNumber   string            `gorm:"type:varchar(100);not null" json:"vendor_account_number"`
+	AmountRequested       int64             `gorm:"type:bigint;not null" json:"amount_requested"`
+	ExpenseDescription    string            `gorm:"type:text;not null" json:"expense_description"`
+	InvoiceFileURL        string            `gorm:"type:text;not null" json:"invoice_file_url"`
+	PayoutPhase           string            `gorm:"type:varchar(100);not null;default:'FINAL_SETTLEMENT'" json:"payout_phase"`
+	Status                string            `gorm:"type:varchar(50);not null;default:'PENDING'" json:"status"`
+	IsDisbursedByMidtrans bool              `gorm:"type:boolean;not null;default:false" json:"is_disbursed_by_midtrans"`
+	ReviewedBy            *string           `gorm:"type:uuid" json:"reviewed_by,omitempty"`
+	Reviewer              *UserProfile      `gorm:"foreignKey:ReviewedBy"`
+	ReviewedAt            *time.Time        `json:"reviewed_at,omitempty"`
+	CreatedAt             time.Time         `gorm:"default:now()" json:"created_at"`
 }
 
-// Dispute mewakili tabel resolusi sengketa 'disputes'
 type Dispute struct {
-	ID                string     `json:"id"`
-	TransactionID     string     `json:"transaction_id"`
-	RaisedBy          string     `json:"raised_by"`
-	TargetPartyID     *string    `json:"target_party_id,omitempty"`
-	MediatorID        *string    `json:"mediator_id,omitempty"`
-	Reason            string     `json:"reason"`
-	EvidenceURL       *string    `json:"evidence_url,omitempty"`
-	IsResolved        bool       `json:"is_resolved"`
-	ResolutionSummary *string    `json:"resolution_summary,omitempty"`
-	CreatedAt         time.Time  `json:"created_at"`
-	UpdatedAt         time.Time  `json:"updated_at"`
+	ID                string      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	TransactionID     string      `gorm:"type:uuid;not null;unique" json:"transaction_id"`
+	Transaction       Transaction `gorm:"foreignKey:TransactionID;constraint:OnDelete:CASCADE"`
+	RaisedBy          string      `gorm:"type:uuid;not null" json:"raised_by"`
+	TargetPartyID     *string     `gorm:"type:uuid" json:"target_party_id,omitempty"`
+	MediatorID        *string     `gorm:"type:uuid" json:"mediator_id,omitempty"`
+	Raiser            UserProfile `gorm:"foreignKey:RaisedBy"`
+	Target            UserProfile `gorm:"foreignKey:TargetPartyID"`
+	Mediator          UserProfile `gorm:"foreignKey:MediatorID"`
+	Reason            string      `gorm:"type:text;not null" json:"reason"`
+	EvidenceURL       *string     `gorm:"type:text" json:"evidence_url,omitempty"`
+	IsResolved        bool        `gorm:"type:boolean;not null;default:false" json:"is_resolved"`
+	ResolutionSummary *string     `gorm:"type:text" json:"resolution_summary,omitempty"`
+	CreatedAt         time.Time   `gorm:"default:now()" json:"created_at"`
+	UpdatedAt         time.Time   `gorm:"default:now()" json:"updated_at"`
 }

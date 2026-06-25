@@ -1,15 +1,18 @@
 package main
 
 import (
-	"context"
 	"fmt"
 	"log"
+	"net/http"
 	"os"
-
+	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/jackc/pgx/v5/pgxpool"
+	"gorm.io/driver/postgres"
+	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 	"github.com/joho/godotenv"
+	"rekberkuy/core-service/internal/domain"
 )
 
 func main() {
@@ -25,30 +28,54 @@ func main() {
 		log.Fatal("Error: DATABASE_URL tidak ditemukan di file .env")
 	}
 
-	// 3. Inisialisasi Database Connection Pool (Skala Industri wajib pake Pool)
-	config, err := pgxpool.ParseConfig(dbURL)
+	// 3. Inisialisasi Database via GORM (Mengelola Connection Pool secara otomatis)
+	db, err := gorm.Open(postgres.Open(dbURL), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Info), // Menampilkan log query SQL di terminal
+	})
 	if err != nil {
-		log.Fatalf("Gagal memproses konfigurasi database: %v", err)
+		log.Fatalf("Gagal membuat koneksi database via GORM: %v", err)
 	}
 
-	dbPool, err := pgxpool.NewWithConfig(context.Background(), config)
-	if err != nil {
-		log.Fatalf("Gagal membuat koneksi ke Supabase: %v", err)
+	// Set parameter Connection Pool skala industri
+	sqlDB, err := db.DB()
+	if err == nil {
+		sqlDB.SetMaxIdleConns(10)
+		sqlDB.SetMaxOpenConns(100)
+		sqlDB.SetConnMaxLifetime(time.Hour)
 	}
-	defer dbPool.Close()
 
-	// 4. Tes Koneksi (Ping)
-	err = dbPool.Ping(context.Background())
+	fmt.Println("🚀 HORE! Backend Go GORM berhasil terhubung dengan aman ke Database Supabase!")
+
+	// 4. EKSEKUSI AUTOMIGRATE SEBELUM API SERVER NYALA
+	log.Println("Memulai proses AutoMigrate lintas entitas...")
+	err = db.AutoMigrate(
+		&domain.UserProfile{},
+		&domain.RekberPayWallet{},
+		&domain.CRMLoyalty{},
+		&domain.Transaction{},
+		&domain.TransactionGoods{},
+		&domain.TransactionServices{},
+		&domain.TransactionEvents{},
+		&domain.ServiceMilestone{},
+		&domain.VendorCategoryModel{},
+		&domain.VendorProfile{},
+		&domain.EventVendorAllocation{},
+		&domain.EventOfficialDetails{},
+		&domain.EventVendorPayout{},
+		&domain.Dispute{},
+		&domain.RekberPayTransaction{},
+		&domain.KYCSubmission{},
+	)
 	if err != nil {
-		log.Fatalf("Database Supabase tidak merespon: %v", err)
+		log.Fatalf("❌ CRITICAL: Proses AutoMigrate GORM Gagal: %v", err)
 	}
-	fmt.Println("🚀 HORE! Backend Go 1.25 berhasil terhubung dengan aman ke Database Supabase!")
+	log.Println("🎉 SUKSES! Seluruh tabel dan foreign key terpasang rinci di Supabase!")
 
 	// 5. Inisialisasi Server Gin HTTP
 	r := gin.Default()
 
 	r.GET("/ping", func(c *gin.Context) {
-		c.JSON(200, gin.H{
+		c.JSON(http.StatusOK, gin.H{
 			"status":  "success",
 			"message": "Rekberkuy Engine is running smoothly",
 		})

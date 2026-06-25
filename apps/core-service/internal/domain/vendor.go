@@ -9,40 +9,43 @@ const (
 	VendorKatering    VendorCategory = "KATERING"
 	VendorSoundSystem VendorCategory = "SOUND_SYSTEM"
 	VendorDekorasi    VendorCategory = "DEKORASI"
-	
-	// Tambahan Kunci untuk EO Besar / Resmi
 	VendorEO          VendorCategory = "EVENT_ORGANIZER" 
 )
 
-// EOProfile adalah ALIAS dari VendorProfile agar kode di Usecase 
-// jauh lebih manusiawi saat dibaca (e.g., var organizer domain.EOProfile)
+type VendorCategoryModel struct {
+	ID        uint      `gorm:"primaryKey;autoIncrement"`
+	Name      string    `gorm:"type:varchar(100);not null;unique" json:"name"`
+	CreatedAt time.Time `gorm:"default:now()"`
+}
+
 type EOProfile = VendorProfile
 
-// VendorProfile menampung informasi bisnis dari vendor resmi maupun EO Resmi
 type VendorProfile struct {
-	VendorID     string         `json:"vendor_id"`
-	BusinessName string         `json:"business_name"`
-	Category     VendorCategory `json:"category"`
-	IsVerified   bool           `json:"is_verified"`
-	CreatedAt    time.Time      `json:"created_at"`
+	VendorID     string      `gorm:"type:uuid;primaryKey;not null" json:"vendor_id"`
+	UserProfile  UserProfile `gorm:"foreignKey:VendorID;constraint:OnDelete:CASCADE"`
+	BusinessName string      `gorm:"type:varchar(255);not null" json:"business_name"`
+	Category     string      `gorm:"type:varchar(100);not null" json:"category"` // Mapping dari ENUM string
+	IsVerified   bool        `gorm:"type:boolean;default:false" json:"is_verified"`
+	CreatedAt    time.Time   `gorm:"default:now()" json:"created_at"`
 }
 
-// EventVendorAllocation mencatat porsi dana escrow yang dialokasikan ke vendor / EO Besar
 type EventVendorAllocation struct {
-	ID               string    `json:"id"`
-	TransactionID    string    `json:"transaction_id"`
-	VendorID         string    `json:"vendor_id"`
-	AllocatedAmount  int64     `json:"allocated_amount"`
-	ActualPaidAmount int64     `json:"actual_paid_amount"`
-	Status           string    `json:"status"` // PLEDGED, PARTIALLY_PAID, FULLY_PAID, DISPUTED
-	CreatedAt        time.Time `json:"created_at"`
+	ID               string            `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	TransactionID    string            `gorm:"type:uuid;not null;index" json:"transaction_id"`
+	EventTx          TransactionEvents `gorm:"foreignKey:TransactionID;constraint:OnDelete:CASCADE"`
+	VendorID         string            `gorm:"type:uuid;not null" json:"vendor_id"`
+	Vendor           VendorProfile     `gorm:"foreignKey:VendorID"`
+	AllocatedAmount  int64             `gorm:"type:bigint;not null" json:"allocated_amount"`
+	ActualPaidAmount int64             `gorm:"type:bigint;default:0" json:"actual_paid_amount"`
+	Status           string            `gorm:"type:varchar(50);default:'PLEDGED'" json:"status"` 
+	CreatedAt        time.Time         `gorm:"default:now()" json:"created_at"`
 }
 
-// EventOfficialDetails mencatat kontrak resmi untuk EO Besar (Kategori Pengeluaran > 10 Juta)
-// Ini menampung Management Fee yang sudah disepakati di awal (bukan hasil ngembat surplus)
 type EventOfficialDetails struct {
-	TransactionID string    `json:"transaction_id"`
-	OrganizerID   string    `json:"organizer_id"`   // Relasi ke VendorProfile (Category: VendorEO)
-	ManagementFee int64     `json:"management_fee"` // Fee profesional tetap EO Resmi
-	ApprovedAt    time.Time `json:"approved_at"`
+	TransactionID string            `gorm:"type:uuid;primaryKey;not null" json:"transaction_id"`
+	EventTx       TransactionEvents `gorm:"foreignKey:TransactionID;constraint:OnDelete:CASCADE"`
+	OrganizerID   string            `gorm:"type:uuid;not null" json:"organizer_id"`
+	Organizer     VendorProfile     `gorm:"foreignKey:OrganizerID"`
+	ManagementFee int64             `gorm:"type:bigint;not null" json:"management_fee"` 
+	ApprovedAt    time.Time         `gorm:"default:now()" json:"approved_at"`
 }

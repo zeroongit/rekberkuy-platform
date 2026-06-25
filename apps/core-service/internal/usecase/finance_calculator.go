@@ -1,7 +1,7 @@
 package usecase
 
 import (
-	"rekberkuy/core-service/internal/domain"
+	"rekberkuy/core-service/internal/domain" // Sesuaikan path go.mod Anda
 )
 
 type FinanceCalculator struct{}
@@ -10,14 +10,23 @@ func NewFinanceCalculator() *FinanceCalculator {
 	return &FinanceCalculator{}
 }
 
+// ============================================================================
+// 📦 SEKTOR 1: KALKULASI FEE TRANSAKSI (UPFRONT & RELEASE)
+// ============================================================================
+
+// CalculateBuyerServiceFee menghitung biaya proteksi pembeli di awal transaksi
 func (c *FinanceCalculator) CalculateBuyerServiceFee(rekberType domain.RekberType, amountBase int64, isRekberPay bool, sellerTier string) int64 {
-	if rekberType == domain.TypeGoods || rekberType == domain.TypeServices {
+	if rekberType == domain.TypeServices {
+		return 0 
+	}
+
+	if rekberType == domain.TypeGoods {
 		switch sellerTier {
 		case "GOLD":
 			return int64(float64(amountBase) * 0.08)
 		case "SILVER":
 			return int64(float64(amountBase) * 0.04)
-		default:
+		default: // BRONZE
 			if isRekberPay {
 				return domain.FeeGoodsRekberPay
 			}
@@ -27,141 +36,141 @@ func (c *FinanceCalculator) CalculateBuyerServiceFee(rekberType domain.RekberTyp
 	return 0
 }
 
+// CalculateSellerServiceFee menghitung potongan komisi merchant saat dana cair
 func (c *FinanceCalculator) CalculateSellerServiceFee(rekberType domain.RekberType, amountToRelease int64, sellerTier string) int64 {
-	if rekberType == domain.TypeGoods || rekberType == domain.TypeServices {
+	if rekberType == domain.TypeServices {
+		return int64(float64(amountToRelease) * 0.02)
+	}
+
+	if rekberType == domain.TypeGoods {
 		switch sellerTier {
 		case "GOLD":
-			return int64(float64(amountToRelease) * 0.03)
+			return int64(float64(amountToRelease) * 0.03) 
 		case "SILVER":
-			return int64(float64(amountToRelease) * 0.06)
-		default:
-			return int64(float64(amountToRelease) * 0.10)
+			return int64(float64(amountToRelease) * 0.06) 
+		default: // BRONZE
+			return int64(float64(amountToRelease) * 0.10) 
 		}
 	}
 	return 0
 }
 
+// ============================================================================
+// 🎪 SEKTOR 2: AUDIT FINANSIAL LINI EVENT (POST-EVENT AUDIT ENGINE)
+// ============================================================================
+
+// CalculateEventAudit menghitung pembagian surplus dana milik Event Organizer
 func (c *FinanceCalculator) CalculateEventAudit(totalEscrowLocked int64, vendorsBill []domain.EventVendorAllocation, eoTier string) domain.EventAuditResult {
-	
-	// 1. Hitung total pengeluaran riil di lapangan (Sum seluruh tagihan akhir vendor)
+	platformFee := int64(float64(totalEscrowLocked) * 0.05)
+	maxVendorPool := totalEscrowLocked - platformFee
+
 	var totalActualSpent int64 = 0
 	for _, bill := range vendorsBill {
 		totalActualSpent += bill.ActualPaidAmount
 	}
 
-	// 2. Hitung Fee Platform Rekberkuy (Flat 5% dari dana yang benar-benar terpakai oleh para vendor)
-	var platformFee int64 = 0
-	if totalActualSpent > 0 {
-		platformFee = int64(float64(totalActualSpent) * 0.05)
+	if totalActualSpent > maxVendorPool {
+		totalActualSpent = maxVendorPool
 	}
 
-	// 3. Hitung sisa anggaran bersih (surplus) setelah dipotong biaya vendor & komisi platform kita
-	rawSurplus := totalEscrowLocked - totalActualSpent - platformFee
-	if rawSurplus < 0 {
-		rawSurplus = 0
+	netSurplus := maxVendorPool - totalActualSpent
+	if netSurplus < 0 {
+		netSurplus = 0
 	}
 
-	// 4. Menentukan persentase bonus insentif EO dari sisa anggaran bersih (rawSurplus)
-	var eoBonusPercent float64 = 0.02 // Default dasar untuk Event Besar (> Rp 10 Juta)
+	var bonusToEO int64 = 0
+	var refundToPeserta int64 = 0
 
-	if totalEscrowLocked <= 10000000 {
-		// === KLASTER EVENT KECIL (<= Rp 10 Juta) ===
-		switch eoTier {
-		case "GOLD":
-			eoBonusPercent = 0.15 // 15% murni untuk EO Gold
-		case "SILVER":
-			eoBonusPercent = 0.10 // 10% untuk Silver
-		default:
-			eoBonusPercent = 0.05 // 5% untuk Newbie
-		}
+	// Evaluasi ambang batas Rp500.000 khusus untuk Event Kecil (<= Rp10 Juta)
+	if netSurplus <= 500000 && totalEscrowLocked <= 10000000 {
+		bonusToEO = netSurplus
+		refundToPeserta = 0
 	} else {
-		// === KLASTER EVENT BESAR (> Rp 10 Juta) ===
-		switch eoTier {
-		case "GOLD":
-			eoBonusPercent = 0.08 // 8%
-		case "SILVER":
-			eoBonusPercent = 0.04 // 4%
-		default:
-			eoBonusPercent = 0.02 // 2%
-		}
+		// Panggil fungsi terpisah untuk mendapatkan persentase bonus berdasarkan kasta
+		eoBonusPercent := c.getEventBonusPercentage(totalEscrowLocked, eoTier)
+		bonusToEO = int64(float64(netSurplus) * eoBonusPercent)
+		refundToPeserta = netSurplus - bonusToEO
 	}
 
-	// 5. Hitung nominal rupiah final untuk jatah bonus EO dan sisa pengembalian otomatis ke peserta
-	bonusToEO := int64(float64(rawSurplus) * eoBonusPercent)
-	refundToPeserta := rawSurplus - bonusToEO
 	if refundToPeserta < 0 {
 		refundToPeserta = 0
 	}
 
 	return domain.EventAuditResult{
 		PlatformFee:     platformFee,
-		AmountToVendor:  totalActualSpent, // Total dana yang didistribusikan ke seluruh vendor
+		AmountToVendor:  totalActualSpent,
 		BonusToEO:       bonusToEO,
 		RefundToPeserta: refundToPeserta,
 	}
 }
 
+// Helper internal untuk memisahkan logika persentase bonus event
+func (c *FinanceCalculator) getEventBonusPercentage(totalEscrow int64, eoTier string) float64 {
+	if totalEscrow <= 10000000 {
+		switch eoTier {
+		case "GOLD":
+			return 0.15
+		case "SILVER":
+			return 0.10
+		default: // BRONZE
+			return 0.05
+		}
+	}
+	
+	switch eoTier {
+	case "GOLD":
+		return 0.08
+	case "SILVER":
+		return 0.04
+	default: // BRONZE
+		return 0.02
+	}
+}
+
+// ============================================================================
+// 📈 SEKTOR 3: EVALUASI KASTA LOYALITAS BULANAN (CRM ENGINE) - DIPISAH TOTAL
+// ============================================================================
+
+// EvaluateMonthlyMerchantTier adalah fungsi utama yang memanggil sub-fungsi spesifik tiap lini
 func (c *FinanceCalculator) EvaluateMonthlyMerchantTier(rekberType domain.RekberType, currentLoyalty domain.CRMLoyalty, currentRating float64) (string, string) {
 	if currentRating < 4.5 {
-		return "NEWBIE", "RATING_DROP"
+		return "BRONZE", "RATING_DROP"
 	}
 
-	if rekberType == domain.TypeEvents {
-		if currentRating >= 4.7 && currentLoyalty.TotalCompletedEvents >= 10 {
-			return "GOLD", "STAY_GOLD"
-		}
-		if currentRating >= 4.5 && currentLoyalty.TotalCompletedEvents >= 3 {
-			return "SILVER", "UPGRADE_TO_SILVER"
-		}
-		return "NEWBIE", "STAY_NEWBIE"
+	switch rekberType {
+	case domain.TypeEvents:
+		return c.evaluateEventLoyalty(currentLoyalty, currentRating)
+	case domain.TypeServices:
+		return c.evaluateServiceLoyalty(currentLoyalty, currentRating)
+	default:
+		return "BRONZE", "STAY_BRONZE"
 	}
+}
 
-	if rekberType == domain.TypeServices {
-		if currentRating >= 4.7 && currentLoyalty.TotalCompletedServices >= 20 {
-			if currentLoyalty.CurrentTier == "GOLD" && currentLoyalty.ConsecutiveFailedMonths > 0 {
-				if currentLoyalty.ConsecutiveFailedMonths >= 3 {
-					return "SILVER", "DOWNGRADE_TO_SILVER"
-				}
-				return "GOLD", "WARNING_LOW_SALES"
-			}
-			return "GOLD", "STAY_GOLD"
-		}
-		if currentRating >= 4.5 && currentLoyalty.TotalCompletedServices >= 5 {
-			return "SILVER", "UPGRADE_TO_SILVER"
-		}
-		return "NEWBIE", "STAY_NEWBIE"
+// Fungsi isolasi murni untuk evaluasi kasta Event Organizer
+func (c *FinanceCalculator) evaluateEventLoyalty(loyalty domain.CRMLoyalty, rating float64) (string, string) {
+	if rating >= 4.7 && loyalty.TotalCompletedEvents >= 10 {
+		return "GOLD", "STAY_GOLD"
 	}
-
-	var monthlyTarget int64 = 100000000
-	var silverTotalRequired int64 = 100000000
-	var goldTotalRequired int64 = 1000000000
-
-	if currentLoyalty.MaxItemPriceSold <= 100000 {
-		monthlyTarget = 10000000
-		silverTotalRequired = 10000000
-		goldTotalRequired = 100000000
-	} else if currentLoyalty.MaxItemPriceSold > 10000000 {
-		monthlyTarget = 1000000000
-		silverTotalRequired = 1000000000
-		goldTotalRequired = 10000000000
+	if rating >= 4.5 && loyalty.TotalCompletedEvents >= 3 {
+		return "SILVER", "UPGRADE_TO_SILVER"
 	}
+	return "BRONZE", "STAY_BRONZE"
+}
 
-	if currentLoyalty.CurrentTier == "GOLD" {
-		if currentLoyalty.CurrentMonthGmv < monthlyTarget {
-			failedMonths := currentLoyalty.ConsecutiveFailedMonths + 1
-			if failedMonths >= 3 {
+// Fungsi isolasi murni untuk evaluasi kasta Penyedia Jasa / Vendor
+func (c *FinanceCalculator) evaluateServiceLoyalty(loyalty domain.CRMLoyalty, rating float64) (string, string) {
+	if rating >= 4.7 && loyalty.TotalCompletedServices >= 20 {
+		if loyalty.CurrentTier == "GOLD" && loyalty.ConsecutiveFailedMonths > 0 {
+			if loyalty.ConsecutiveFailedMonths >= 3 {
 				return "SILVER", "DOWNGRADE_TO_SILVER"
 			}
 			return "GOLD", "WARNING_LOW_SALES"
 		}
 		return "GOLD", "STAY_GOLD"
 	}
-
-	if currentLoyalty.TotalSpentFiat >= goldTotalRequired {
-		return "GOLD", "UPGRADE_TO_GOLD"
-	} else if currentLoyalty.TotalSpentFiat >= silverTotalRequired {
+	if rating >= 4.5 && loyalty.TotalCompletedServices >= 5 {
 		return "SILVER", "UPGRADE_TO_SILVER"
 	}
-
-	return "NEWBIE", "STAY_NEWBIE"
+	return "BRONZE", "STAY_BRONZE"
 }

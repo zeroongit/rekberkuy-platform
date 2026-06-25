@@ -116,6 +116,8 @@ delivery/http/  →  usecase/  →  repository/  →  domain/
 
 > **PENTING:** Smart contract di folder `blockchain/` berfungsi **HANYA sebagai audit log transaksi**. Bukan untuk menyimpan dana, bukan escrow on-chain, bukan logika bisnis.
 
+Mengingat pembayaran dengan kripto tidak legal di Indonesia, platform ini menerapkan metode **Gasless Transaction**. Artinya, pengguna sama sekali tidak berinteraksi langsung dengan blockchain. Backend bertindak sebagai *Relayer* yang mengeksekusi dan membayarkan *gas fee* secara otomatis di latar belakang untuk setiap pencatatan transaksi yang sudah selesai.
+
 **Yang boleh dilakukan smart contract:**
 - Mencatat hash/ID transaksi yang sudah selesai
 - Menyimpan timestamp & status akhir transaksi
@@ -222,7 +224,7 @@ Sebelum menulis kode, pastikan kamu sudah:
 - [ ] Tidak melanggar aturan dependency antar layer
 - [ ] Menyiapkan test untuk kode baru
 - [ ] Menggunakan nama yang konsisten dengan domain bisnis yang sudah ada
-
+@
 ---
 
 ## 📚 Referensi Penting

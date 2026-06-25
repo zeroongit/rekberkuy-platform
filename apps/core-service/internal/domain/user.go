@@ -4,42 +4,39 @@ import (
 	"time"
 )
 
-// UserRole mencerminkan ENUM user_role di Supabase
 type UserRole string
 
 const (
-	RoleMember           UserRole = "MEMBER"
+	RoleUser             UserRole = "USER"
 	RoleVerifiedMerchant UserRole = "VERIFIED_MERCHANT"
 	RoleVerifiedVendor   UserRole = "VERIFIED_VENDOR"
+	RoleEventOrganizer   UserRole = "EVENT_ORGANIZER"
 	RoleAdmin            UserRole = "ADMIN"
-	RoleMediator         UserRole = "MEDIATOR"
 )
 
-// UserProfile mewakili tabel 'user_profiles'
 type UserProfile struct {
-	ID            string    `json:"id"`
-	Username      string    `json:"username"`
-	FullName      string    `json:"full_name"`
-	Role          UserRole  `json:"role"`
-	PhoneNumber   *string   `json:"phone_number,omitempty"`
-	CreatedAt     time.Time `json:"created_at"`
-	UpdatedAt     time.Time `json:"updated_at"`
+	ID          string    `gorm:"type:uuid;primaryKey;not null" json:"id"`
+	Username    string    `gorm:"type:varchar(255);not null;unique" json:"username"`
+	FullName    string    `gorm:"type:varchar(255);not null" json:"full_name"`
+	Role        UserRole  `gorm:"type:varchar(50);not null;default:'USER'" json:"role"`
+	PhoneNumber *string   `gorm:"type:varchar(50)" json:"phone_number,omitempty"`
+	CreatedAt   time.Time `gorm:"default:now()" json:"created_at"`
+	UpdatedAt   time.Time `gorm:"default:now()" json:"updated_at"`
 }
 
-// CRMLoyalty mewakili tabel 'crm_loyalty' (Tempat hitung koin Shopee-style kita)
 type CRMLoyalty struct {
-	UserID                   string    `json:"user_id"`
-	TotalPoints              int64     `json:"total_points"`
-	CurrentTier              string    `json:"current_tier"` // NEWBIE, SILVER, GOLD
-	TotalSpentFiat           int64     `json:"total_spent_fiat"`
-	UpdatedAt                time.Time `json:"updated_at"`
-	
-	// Tambahan Field Baru untuk Mengatasi Error Kompiler Go
-	TotalCompletedServices   int       `json:"total_completed_services"`   // Jumlah proyek jasa sukses
-	TotalCompletedEvents    int       `json:"total_completed_events"`
-	ConsecutiveFailedMonths  int       `json:"consecutive_failed_months"`  // Sisa nyawa (maks 3)
-	CurrentMonthGmv          int64     `json:"current_month_gmv"`          // Penjual bulanan berjalan
-	MaxItemPriceSold         int64     `json:"max_item_price_sold"`        // Detektor klaster harga barang
-	TierEvaluationStartedAt  time.Time `json:"tier_evaluation_started_at"`
-	LastMonthEvaluatedAt     time.Time `json:"last_month_evaluated_at"`
+	UserID                  string      `gorm:"type:uuid;primaryKey;not null" json:"user_id"`
+	UserProfile             UserProfile `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
+	TotalPoints             int64       `gorm:"type:bigint;not null;default:0" json:"total_points"`
+	CurrentTier             string      `gorm:"type:varchar(50);not null;default:'BRONZE'" json:"current_tier"`
+	TotalSpentFiat          int64       `gorm:"type:bigint;not null;default:0" json:"total_spent_fiat"`
+	Rolling3MonthGMV        int64       `gorm:"type:bigint;not null;default:0" json:"rolling_3_month_gmv"`
+	CurrentMonthGmv         int64       `gorm:"type:bigint;not null;default:0" json:"current_month_gmv"`
+	MaxItemPriceSold        int64       `gorm:"type:bigint;not null;default:0" json:"max_item_price_sold"`
+	TotalCompletedServices  int         `gorm:"type:integer;not null;default:0" json:"total_completed_services"`
+	TotalCompletedEvents    int         `gorm:"type:integer;not null;default:0" json:"total_completed_events"`
+	ConsecutiveFailedMonths  int         `gorm:"type:integer;not null;default:0" json:"consecutive_failed_months"`
+	TierEvaluationStartedAt time.Time   `gorm:"default:now()" json:"tier_evaluation_started_at"`
+	LastMonthEvaluatedAt    time.Time   `gorm:"default:now()" json:"last_month_evaluated_at"`
+	UpdatedAt               time.Time   `gorm:"default:now()" json:"updated_at"`
 }

@@ -1,57 +1,39 @@
-# Sample Hardhat 3 Beta Project (`node:test` and `viem`)
+# ⛓️ RekberKuy - Blockchain (Audit Log)
 
-This project showcases a Hardhat 3 Beta project using the native Node.js test runner (`node:test`) and the `viem` library for Ethereum interactions.
+Modul ini mengelola infrastruktur *smart contract* RekberKuy di jaringan **Avalanche**. 
 
-To learn more about the Hardhat 3 Beta, please visit the [Getting Started guide](https://hardhat.org/docs/getting-started#getting-started-with-hardhat-3). To share your feedback, join our [Hardhat 3 Beta](https://hardhat.org/hardhat3-beta-telegram-group) Telegram group or [open an issue](https://github.com/NomicFoundation/hardhat/issues/new) in our GitHub issue tracker.
+## ⚠️ BATASAN MUTLAK (Audit Log Only)
+Sesuai regulasi kripto di Indonesia, platform ini menerapkan skema **Gasless Transaction**. Artinya:
+- **Fungsi Utama:** Hanya digunakan sebagai *Audit Log Immutable* untuk transparansi transaksi escrow.
+- **Tanpa Gas Fee User:** Pengguna di *frontend* tidak menggunakan dompet kripto. Semua transaksi di-*broadcast* oleh Backend RekberKuy (sebagai *Relayer*) secara transparan.
+- **DILARANG:** Menyimpan atau menahan uang/escrow, menghitung komisi/fee, atau menyimpan data PII pengguna di dalam *smart contract* (termasuk di dalam tipe *mapping*).
 
-## Project Overview
+## 🛠️ Tech Stack & Jaringan
+- **Framework:** Hardhat v3.
+- **Deployment Tool:** Hardhat Ignition.
+- **Bahasa:** Solidity.
+- **Jaringan Target:** Avalanche C-Chain (Fuji Testnet untuk *dev/staging*, Mainnet untuk *prod*).
 
-This example project includes:
+## 🚀 Cara Menjalankan & Deployment
 
-- A simple Hardhat configuration file.
-- Foundry-compatible Solidity unit tests.
-- TypeScript integration tests using [`node:test`](nodejs.org/api/test.html), the new Node.js native test runner, and [`viem`](https://viem.sh/).
-- Examples demonstrating how to connect to different types of networks, including locally simulating OP mainnet.
+1. **Install Dependensi:**
+   ```bash
+   npm install
+   ```
+2. **Kompilasi Kontrak:**
+   ```bash
+   npx hardhat compile
+   ```
+3. **Jalankan Test:**
+   ```bash
+   npx hardhat test
+   ```
+4. **Jalankan Node Lokal (Simulasi Blockchain):**
+   ```bash
+   npx hardhat node
+   ```
+5. **Deploy Kontrak (Hardhat Ignition):**
+   ```bash
+   npx hardhat ignition deploy ignition/modules/Counter.ts --network localhost
+   ```
 
-## Usage
-
-### Running Tests
-
-To run all the tests in the project, execute the following command:
-
-```shell
-npx hardhat test
-```
-
-You can also selectively run the Solidity or `node:test` tests:
-
-```shell
-npx hardhat test solidity
-npx hardhat test nodejs
-```
-
-### Make a deployment to Sepolia
-
-This project includes an example Ignition module to deploy the contract. You can deploy this module to a locally simulated chain or to Sepolia.
-
-To run the deployment to a local chain:
-
-```shell
-npx hardhat ignition deploy ignition/modules/Counter.ts
-```
-
-To run the deployment to Sepolia, you need an account with funds to send the transaction. The provided Hardhat configuration includes a Configuration Variable called `SEPOLIA_PRIVATE_KEY`, which you can use to set the private key of the account you want to use.
-
-You can set the `SEPOLIA_PRIVATE_KEY` variable using the `hardhat-keystore` plugin or by setting it as an environment variable.
-
-To set the `SEPOLIA_PRIVATE_KEY` config variable using `hardhat-keystore`:
-
-```shell
-npx hardhat keystore set SEPOLIA_PRIVATE_KEY
-```
-
-After setting the variable, you can run the deployment with the Sepolia network:
-
-```shell
-npx hardhat ignition deploy --network sepolia ignition/modules/Counter.ts
-```
