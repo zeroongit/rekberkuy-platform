@@ -67,7 +67,7 @@ func main() {
 	}
 
 	log.Println("Memulai proses AutoMigrate Tahap 2 (Eksekusi Mandiri Terisolasi)...")
-	
+
 	// Step A: Buat entitas fundamental sengketa dan milestone
 	if err := db.AutoMigrate(&domain.Dispute{}); err != nil {
 		log.Fatalf("❌ Gagal migrasi Dispute: %v", err)
