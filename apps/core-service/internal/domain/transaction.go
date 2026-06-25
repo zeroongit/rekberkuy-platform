@@ -2,6 +2,7 @@ package domain
 
 import (
 	"time"
+	"context"
 )
 
 const (
@@ -122,4 +123,10 @@ type Dispute struct {
 	ResolutionSummary *string     `gorm:"type:text" json:"resolution_summary,omitempty"`
 	CreatedAt         time.Time   `gorm:"default:now()" json:"created_at"`
 	UpdatedAt         time.Time   `gorm:"default:now()" json:"updated_at"`
+}
+
+type TransactionRepository interface {
+	CreateTransaction(ctx context.Context, tx *Transaction) error
+	GetTransactionByID(ctx context.Context, id string) (*Transaction, error)
+	UpdateTransactionStatus(ctx context.Context, id string, status TransactionStatus) error
 }
