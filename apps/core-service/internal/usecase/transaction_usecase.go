@@ -9,15 +9,15 @@ import (
 	"rekberkuy/core-service/internal/domain"
 )
 
-type transactionUsecase struct {
-	transactionRepo domain.TransactionRepository // SINKRONISASI: Injeksi Repo Transaksi Baru
+type TransactionUsecase struct {
+	transactionRepo domain.TransactionRepository 
 	walletRepo      domain.WalletRepository
 	financeCalc     *FinanceCalculator
 }
 
 // NewTransactionUsecase menginisialisasi manajer pengatur alur transaksi Rekberkuy
-func NewTransactionUsecase(tr domain.TransactionRepository, wr domain.WalletRepository, fc *FinanceCalculator) *transactionUsecase {
-	return &transactionUsecase{
+func NewTransactionUsecase(tr domain.TransactionRepository, wr domain.WalletRepository, fc *FinanceCalculator) *TransactionUsecase {
+	return &TransactionUsecase{
 		transactionRepo: tr,
 		walletRepo:      wr,
 		financeCalc:     fc,
@@ -25,7 +25,7 @@ func NewTransactionUsecase(tr domain.TransactionRepository, wr domain.WalletRepo
 }
 
 // LockFundsAwal menangani alur ketika pembeli mengunci dana mereka ke escrow Rekberkuy (Skenario Shopee Multi-Role)
-func (u *transactionUsecase) LockFundsAwal(ctx context.Context, buyerID string, sellerID string, amountBase int64, rekberType domain.RekberType, isRekberPay bool, sellerTier string, shippingFee int64, paymentMethod string, idempotencyKey string) (*domain.Transaction, error) {
+func (u *TransactionUsecase) LockFundsAwal(ctx context.Context, buyerID string, sellerID string, amountBase int64, rekberType domain.RekberType, isRekberPay bool, sellerTier string, shippingFee int64, paymentMethod string, idempotencyKey string) (*domain.Transaction, error) {
 	if amountBase <= 0 {
 		return nil, errors.New("nominal transaksi harus lebih besar dari nol")
 	}
@@ -69,7 +69,7 @@ func (u *transactionUsecase) LockFundsAwal(ctx context.Context, buyerID string, 
 }
 
 // ConfirmPaymentWebhookMidtrans memproses perpindahan State Machine dari WAITING_PAYMENT ke FUNDS_LOCKED
-func (u *transactionUsecase) ConfirmPaymentWebhookMidtrans(ctx context.Context, transactionID string) error {
+func (u *TransactionUsecase) ConfirmPaymentWebhookMidtrans(ctx context.Context, transactionID string) error {
 	// Gunakan transaksi database ACID agar mutasi saldo pembeli dan update status transaksi terkunci rapat
 	return u.walletRepo.ExecuteInTransaction(ctx, func(txRepo domain.WalletRepository) error {
 		
@@ -111,7 +111,7 @@ func (u *transactionUsecase) ConfirmPaymentWebhookMidtrans(ctx context.Context, 
 }
 
 // ReleaseFundsSelesai memproses pelepasan dana escrow dari platform ke dompet milik penjual (Barang / Jasa)
-func (u *transactionUsecase) ReleaseFundsSelesai(ctx context.Context, transactionID string) error {
+func (u *TransactionUsecase) ReleaseFundsSelesai(ctx context.Context, transactionID string) error {
 	return u.walletRepo.ExecuteInTransaction(ctx, func(txRepo domain.WalletRepository) error {
 		
 		tx, err := u.transactionRepo.GetTransactionByID(ctx, transactionID)
