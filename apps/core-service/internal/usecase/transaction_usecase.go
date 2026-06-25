@@ -4,83 +4,148 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"time"
 
+	"github.com/google/uuid" 
 	"rekberkuy/core-service/internal/domain"
 )
 
 type transactionUsecase struct {
-	walletRepo  domain.WalletRepository
-	financeCalc *FinanceCalculator
+	transactionRepo domain.TransactionRepository // SINKRONISASI: Injeksi Repo Transaksi Baru
+	walletRepo      domain.WalletRepository
+	financeCalc     *FinanceCalculator
 }
 
 // NewTransactionUsecase menginisialisasi manajer pengatur alur transaksi Rekberkuy
-func NewTransactionUsecase(wr domain.WalletRepository, fc *FinanceCalculator) *transactionUsecase {
+func NewTransactionUsecase(tr domain.TransactionRepository, wr domain.WalletRepository, fc *FinanceCalculator) *transactionUsecase {
 	return &transactionUsecase{
-		walletRepo:  wr,
-		financeCalc: fc,
+		transactionRepo: tr,
+		walletRepo:      wr,
+		financeCalc:     fc,
 	}
 }
 
-// LockFundsAwal menangani alur ketika pembeli/peserta mengunci dana mereka ke escrow Rekberkuy
-func (u *transactionUsecase) LockFundsAwal(ctx context.Context, buyerID string, amountBase int64, rekberType domain.RekberType, isRekberPay bool, sellerTier string) (*domain.RekberPayTransaction, error) {
+// LockFundsAwal menangani alur ketika pembeli mengunci dana mereka ke escrow Rekberkuy (Skenario Shopee Multi-Role)
+func (u *transactionUsecase) LockFundsAwal(ctx context.Context, buyerID string, sellerID string, amountBase int64, rekberType domain.RekberType, isRekberPay bool, sellerTier string, shippingFee int64, paymentMethod string, idempotencyKey string) (*domain.Transaction, error) {
 	if amountBase <= 0 {
 		return nil, errors.New("nominal transaksi harus lebih besar dari nol")
 	}
 
-	// 1. Panggil kalkulator pintar untuk menghitung Buyer Service Fee berdasarkan kasta seller
 	buyerFee := u.financeCalc.CalculateBuyerServiceFee(rekberType, amountBase, isRekberPay, sellerTier)
-	totalDipotong := amountBase + buyerFee
+	
+	// Hitung potongan komisi penjual saat pelepasan dana nanti
+	sellerFee := u.financeCalc.CalculateSellerServiceFee(rekberType, amountBase, sellerTier)
 
-	// 2. Tampung description ke variabel agar bisa diambil pointer-nya (&descMsg)
-	descMsg := fmt.Sprintf("Penguncian dana escrow untuk transaksi jenis %s", rekberType)
+	// Kalkulasi nominal total kotor (Gross) dan bersih (Net) sesuai kolom database Supabase
+	amountGross := amountBase + buyerFee + shippingFee
+	amountNet := amountBase - sellerFee
 
-	// 3. Siapkan objek mutasi log dengan melakukan Type Casting ke domain.WalletTxStatus
-	txRecord := &domain.RekberPayTransaction{
-		ID:          fmt.Sprintf("TX-LOCK-%d", time.Now().UnixNano()),
-		WalletID:    buyerID,
-		Type:        "PAYMENT_ESCROW",
-		Status:      domain.WalletTxStatus(domain.StatusFundsLocked), // FIX: Di-cast ke WalletTxStatus agar sinkron
-		Amount:      totalDipotong,
-		AdminFee:    buyerFee,
-		Description: &descMsg,
+	midtransOrderID := fmt.Sprintf("REKBERKUY-ORDER-%s", uuid.New().String()[:8])
+
+
+	txMaster := &domain.Transaction{
+		ID:               uuid.New().String(),
+		BuyerID:          buyerID,
+		SellerID:         sellerID,
+		Type:             rekberType,
+		Status:           domain.StatusWaitingPayment, // State pertama: Menunggu Pembayaran Webhook Midtrans
+		AmountBase:       amountBase,
+		ShippingFee:      shippingFee,
+		ServiceFee:       buyerFee,
+		MidtransFee:      0,
+		AmountGross:      amountGross,
+		AmountNet:        amountNet,
+		MidtransOrderID:  midtransOrderID,
+		IdempotencyKey:   idempotencyKey,
+		PaymentMethod:    paymentMethod,
+		BlockchainTxHash: nil, // Masih kosong sebelum diproses secara gasless oleh Avalanche Relayer
 	}
-
-	// 4. Perintahkan WalletRepository untuk mengeksekusi mutasi aman (ACID + Anti Race Condition)
-	err := u.walletRepo.UpdateBalanceTx(ctx, txRecord, -totalDipotong)
+	
+	err := u.transactionRepo.CreateTransaction(ctx, txMaster)
 	if err != nil {
-		return nil, fmt.Errorf("gagal mengunci dana di escrow: %w", err)
+		return nil, fmt.Errorf("gagal mencatat transaksi master escrow: %w", err)
 	}
 
-	return txRecord, nil
+	return txMaster, nil
 }
 
-// ReleaseFundsEventSelesai menangani proses audit akhir khusus Event ketika acara selesai.
-func (u *transactionUsecase) ReleaseFundsEventSelesai(ctx context.Context, totalEscrowLocked int64, vendorsBill []domain.EventVendorAllocation, eoID string, eoTier string) (*domain.EventAuditResult, error) {
-	
-	// 1. Panggil kalkulator pintar untuk melakukan audit pemecahan dana secara adil sesuai aturan main kita
-	auditResult := u.financeCalc.CalculateEventAudit(totalEscrowLocked, vendorsBill, eoTier)
-
-	// 2. Eksekusi Pencairan Dana ke EO jika mereka berhak mendapatkan bonus efisiensi (BonusToEO > 0)
-	if auditResult.BonusToEO > 0 {
-		descBonus := fmt.Sprintf("Bonus legal efisiensi anggaran event sebesar %s persen", eoTier)
-
-		eoTxLog := &domain.RekberPayTransaction{
-			ID:                fmt.Sprintf("TX-BONUS-EO-%d", time.Now().UnixNano()),
-			WalletID:          eoID,
-			Type:              "EO_EFFICIENCY_BONUS",
-			Status:            domain.WalletTxStatus(domain.StatusReleased), // FIX: Di-cast ke WalletTxStatus agar sinkron
-			Amount:            auditResult.BonusToEO,
-			PlatformNetProfit: auditResult.PlatformFee,
-			Description:       &descBonus,
-		}
+// ConfirmPaymentWebhookMidtrans memproses perpindahan State Machine dari WAITING_PAYMENT ke FUNDS_LOCKED
+func (u *transactionUsecase) ConfirmPaymentWebhookMidtrans(ctx context.Context, transactionID string) error {
+	// Gunakan transaksi database ACID agar mutasi saldo pembeli dan update status transaksi terkunci rapat
+	return u.walletRepo.ExecuteInTransaction(ctx, func(txRepo domain.WalletRepository) error {
 		
-		// Kirim nilai POSITIF karena saldo wallet RekberPay milik EO bertambah
-		err := u.walletRepo.UpdateBalanceTx(ctx, eoTxLog, auditResult.BonusToEO)
+		// 1. Tarik data transaksi dan pasang kueri FOR UPDATE lock
+		tx, err := u.transactionRepo.GetTransactionByID(ctx, transactionID)
 		if err != nil {
-			return nil, fmt.Errorf("gagal mencairkan bonus efisiensi ke dompet EO: %w", err)
+			return err
 		}
-	}
 
-	return &auditResult, nil
+		if tx.Status != domain.StatusWaitingPayment {
+			return fmt.Errorf("transaksi tidak dapat diproses: status saat ini adalah %s", tx.Status)
+		}
+
+		// 2. Potong saldo wallet RekberPay milik pembeli secara aman
+		descMsg := fmt.Sprintf("Pembayaran sukses untuk transaksi escrow #%s", tx.ID)
+		walletTxLog := &domain.RekberPayTransaction{
+			ID:          uuid.New().String(),
+			WalletID:    tx.BuyerID,
+			Type:        domain.TxPayment, // SINKRONISASI: Menggunakan enum domain yang valid
+			Status:      domain.WalletStatusSuccess,
+			Amount:      tx.AmountGross,
+			AdminFee:    tx.ServiceFee,
+			Description: &descMsg,
+		}
+
+		err = txRepo.UpdateBalanceTx(ctx, walletTxLog, -tx.AmountGross)
+		if err != nil {
+			return fmt.Errorf("gagal mendebet saldo pembeli: %w", err)
+		}
+
+		// 3. Update status transaksi master menjadi FUNDS_LOCKED (Dana tersimpan di escrow platform)
+		err = u.transactionRepo.UpdateTransactionStatus(ctx, tx.ID, domain.StatusFundsLocked)
+		if err != nil {
+			return fmt.Errorf("gagal merubah state transaksi menjadi FUNDS_LOCKED: %w", err)
+		}
+
+		return nil
+	})
+}
+
+// ReleaseFundsSelesai memproses pelepasan dana escrow dari platform ke dompet milik penjual (Barang / Jasa)
+func (u *transactionUsecase) ReleaseFundsSelesai(ctx context.Context, transactionID string) error {
+	return u.walletRepo.ExecuteInTransaction(ctx, func(txRepo domain.WalletRepository) error {
+		
+		tx, err := u.transactionRepo.GetTransactionByID(ctx, transactionID)
+		if err != nil {
+			return err
+		}
+
+		if tx.Status != domain.StatusFundsLocked {
+			return fmt.Errorf("dana gagal dilepas: status transaksi wajib FUNDS_LOCKED, status saat ini %s", tx.Status)
+		}
+
+		// 1. Tambahkan saldo bersih (AmountNet) ke dompet wallet milik penjual
+		descMsg := fmt.Sprintf("Penerimaan dana dari penyelesaian transaksi escrow #%s", tx.ID)
+		sellerTxLog := &domain.RekberPayTransaction{
+			ID:          uuid.New().String(),
+			WalletID:    tx.SellerID,
+			Type:        domain.TxReceiveFunds, // SINKRONISASI: Menggunakan enum domain yang valid
+			Status:      domain.WalletStatusSuccess,
+			Amount:      tx.AmountNet,
+			AdminFee:    0,
+			Description: &descMsg,
+		}
+
+		err = txRepo.UpdateBalanceTx(ctx, sellerTxLog, tx.AmountNet)
+		if err != nil {
+			return fmt.Errorf("gagal mengredit saldo ke dompet penjual: %w", err)
+		}
+
+		// 2. Ubah status transaksi menjadi RELEASED
+		err = u.transactionRepo.UpdateTransactionStatus(ctx, tx.ID, domain.StatusReleased)
+		if err != nil {
+			return fmt.Errorf("gagal merubah state transaksi menjadi RELEASED: %w", err)
+		}
+
+		return nil
+	})
 }
