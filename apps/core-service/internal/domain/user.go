@@ -2,6 +2,7 @@ package domain
 
 import (
 	"time"
+	"context"
 )
 
 type UserRole string
@@ -39,4 +40,9 @@ type CRMLoyalty struct {
 	TierEvaluationStartedAt time.Time   `gorm:"default:now()" json:"tier_evaluation_started_at"`
 	LastMonthEvaluatedAt    time.Time   `gorm:"default:now()" json:"last_month_evaluated_at"`
 	UpdatedAt               time.Time   `gorm:"default:now()" json:"updated_at"`
+}
+
+type UserRepository interface {
+	CreateProfile(ctx context.Context, user *UserProfile) error
+	GetProfileByID(ctx context.Context, id string) (*UserProfile, error)
 }
