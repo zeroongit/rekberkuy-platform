@@ -130,9 +130,8 @@ func main() {
 		// Endpoints Utama Pengunci & Pencair Dana Escrow Barang
 		api.POST("/transactions", txHandler.LockFundsAwalHandler)
 		api.POST("/transactions/release", txHandler.ReleaseFundsHandler)
-		
-		// Endpoint Webhook Penangkap Notifikasi Sukses dari Midtrans
 		api.POST("/webhooks/midtrans", txHandler.MidtransWebhookHandler)
+		api.POST("/transactions/services/release-milestone", txHandler.ReleaseMilestoneHandler)
 	}
 
 	port := os.Getenv("PORT")

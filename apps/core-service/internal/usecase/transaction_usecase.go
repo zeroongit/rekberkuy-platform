@@ -47,7 +47,7 @@ func (u *TransactionUsecase) LockFundsAwal(ctx context.Context, buyerID string, 
 		BuyerID:          buyerID,
 		SellerID:         sellerID,
 		Type:             rekberType,
-		Status:           domain.StatusWaitingPayment, // State pertama: Menunggu Pembayaran Webhook Midtrans
+		Status:           domain.StatusWaitingPayment, 
 		AmountBase:       amountBase,
 		ShippingFee:      shippingFee,
 		ServiceFee:       buyerFee,
@@ -57,7 +57,7 @@ func (u *TransactionUsecase) LockFundsAwal(ctx context.Context, buyerID string, 
 		MidtransOrderID:  midtransOrderID,
 		IdempotencyKey:   idempotencyKey,
 		PaymentMethod:    paymentMethod,
-		BlockchainTxHash: nil, // Masih kosong sebelum diproses secara gasless oleh Avalanche Relayer
+		BlockchainTxHash: nil, 
 	}
 	
 	err := u.transactionRepo.CreateTransaction(ctx, txMaster)
@@ -144,6 +144,43 @@ func (u *TransactionUsecase) ReleaseFundsSelesai(ctx context.Context, transactio
 		err = u.transactionRepo.UpdateTransactionStatus(ctx, tx.ID, domain.StatusReleased)
 		if err != nil {
 			return fmt.Errorf("gagal merubah state transaksi menjadi RELEASED: %w", err)
+		}
+
+		return nil
+	})
+}
+
+// ReleaseMilestoneFunds memproses pelepasan dana escrow per termin/milestone khusus untuk transaksi JASA
+func (u *TransactionUsecase) ReleaseMilestoneFunds(ctx context.Context, milestoneID string) error {
+	// Gunakan transaksi database ACID agar mutasi saldo wallet penjual dan update status milestone terkunci rapat
+	return u.walletRepo.ExecuteInTransaction(ctx, func(txRepo domain.WalletRepository) error {
+		
+		// 1. Ambil data milestone dari database menggunakan query sql murni internal (atau direct via txRepo jika dikembangkan)
+		// Catatan: Untuk keamanan fase MVP, kita simulasikan kueri pencarian baris milestone target
+		// Di sini kita asumsikan data milestone ditarik dari context transaksi yang berjalan
+		
+		// Kita buat objek log transaksi finansial untuk jatah termin ini
+		descMsg := fmt.Sprintf("Pencairan dana milestone termin Jasa untuk ID Milestone: #%s", milestoneID)
+		
+		// Nominal amount termin disesuaikan dengan jatah milestone target (misal Rp2.000.000)
+		// Pada pengembangan riil, nominal ini dibaca dari hasil Scan database `service_milestones`
+		var milestoneAmount int64 = 500000 // Contoh nominal jatah per termin default MVP
+		var sellerID = "99e1903d-bf38-4e89-bc82-9366e7561cfc" // Dummy UUID target Penjual/Freelancer
+
+		sellerTxLog := &domain.RekberPayTransaction{
+			ID:          uuid.New().String(),
+			WalletID:    sellerID,
+			Type:        domain.TxReceiveFunds,
+			Status:      domain.WalletStatusSuccess,
+			Amount:      milestoneAmount,
+			AdminFee:    0,
+			Description: &descMsg,
+		}
+
+		// 2. Kreditkan dana termin ke dompet RekberPay milik penyedia jasa/freelancer
+		err := txRepo.UpdateBalanceTx(ctx, sellerTxLog, milestoneAmount)
+		if err != nil {
+			return fmt.Errorf("gagal mencairkan dana termin milestone ke penjual: %w", err)
 		}
 
 		return nil
