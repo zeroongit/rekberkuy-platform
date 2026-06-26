@@ -5,18 +5,19 @@ import (
 	"log"
 	"time"
 
-	"rekberkuy/core-service/internal/repository"
+	"rekberkuy/core-service/internal/domain" // IMPORT INTERFACE DOMAIN
 	"rekberkuy/core-service/internal/usecase"
 )
 
 type AutoReleaseWorker struct {
-	txRepo    *repository.TransactionRepository // Butuh kueri pencarian data expired
-	txUsecase *usecase.TransactionUsecase       // Butuh mengeksekusi pencairan dana
+	txRepo    domain.TransactionRepository // UBAH JADI INTERFACE
+	txUsecase *usecase.TransactionUsecase
 	ticker    *time.Ticker
 	stopChan  chan struct{}
 }
 
-func NewAutoReleaseWorker(tr *repository.TransactionRepository, tu *usecase.TransactionUsecase) *AutoReleaseWorker {
+// Ganti parameter tipe pertama menjadi domain.TransactionRepository
+func NewAutoReleaseWorker(tr domain.TransactionRepository, tu *usecase.TransactionUsecase) *AutoReleaseWorker {
 	return &AutoReleaseWorker{
 		txRepo:    tr,
 		txUsecase: tu,
@@ -24,11 +25,8 @@ func NewAutoReleaseWorker(tr *repository.TransactionRepository, tu *usecase.Tran
 	}
 }
 
-// Start menyalakan mesin patroli otomatis di latar belakang (goroutine)
 func (w *AutoReleaseWorker) Start(ctx context.Context) {
-	// Set interval patroli (Misal: ngecek ke database setiap 1 Jam sekali)
 	w.ticker = time.NewTicker(1 * time.Hour)
-	
 	log.Println("🤖 ROBOT: Auto-Release Engine RekberKuy berhasil dinyalakan...")
 
 	go func() {
@@ -46,12 +44,14 @@ func (w *AutoReleaseWorker) Start(ctx context.Context) {
 
 func (w *AutoReleaseWorker) executeAutoRelease(ctx context.Context) {
 	log.Println("🤖 ROBOT: Memulai pemindaian transaksi hantu yang melewati batas 3 hari...")
-
-	// 1. Ambil semua transaksi yang bandel/pembelinya lupa konfirmasi
-	// (Untuk kompilasi aman, kita cast txRepo-nya atau bungkus lewat usecase jika diperlukan)
-	// Di sini kita langsung panggil logic usecase pelepasan jika data ditemukan
 	
-	// Sektor pemicu rilis dana otomatis
+	ids, err := w.txRepo.GetExpiredLockedTransactions(ctx)
+	if err != nil {
+		log.Printf("🤖 ROBOT ERROR: Gagal memindai data expired: %v", err)
+		return
+	}
+
+	log.Printf("🤖 ROBOT: Menemukan %d transaksi expired siap di-release otomatis.", len(ids))
 	log.Println("🤖 ROBOT: Pemindaian selesai berkala.")
 }
 

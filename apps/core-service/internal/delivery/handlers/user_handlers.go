@@ -3,17 +3,20 @@ package handlers
 import (
 	"net/http"
 	"rekberkuy/core-service/internal/domain"
+	"rekberkuy/core-service/internal/usecase"
 
 	"github.com/gin-gonic/gin"
 )
 
 type UserHandler struct {
-	// Nanti diisi usecase user jika sudah dibuat, untuk sementara kita injeksi walletUsecase
-	// demi otomatisasi pembuatan wallet saat user daftar (Fase MVP)
+	userUsecase *usecase.UserUsecase // SUNTIKKAN INI
 }
 
-func NewUserHandler() *UserHandler {
-	return &UserHandler{}
+// Perbarui fungsi NewUserHandler agar menerima parameter usecase
+func NewUserHandler(uu *usecase.UserUsecase) *UserHandler {
+	return &UserHandler{
+		userUsecase: uu,
+	}
 }
 
 type RegisterUserRequest struct {
@@ -22,7 +25,6 @@ type RegisterUserRequest struct {
 	FullName string `json:"full_name" binding:"required"`
 }
 
-// RegisterProfileHandler mencatat user baru sekaligus mengamankan pembuatan dompet RekberPay-nya
 func (h *UserHandler) RegisterProfileHandler(c *gin.Context) {
 	var req RegisterUserRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
@@ -30,19 +32,30 @@ func (h *UserHandler) RegisterProfileHandler(c *gin.Context) {
 		return
 	}
 
-	// Sektor ini akan memanggil layer bisnis untuk menyimpan data ke Supabase
+	// Buat objek domain mapping dari request
+	newUser := &domain.UserProfile{
+		ID:       req.ID,
+		Username: req.Username,
+		FullName: req.FullName,
+		Role:     domain.RoleUser, // Default MVP register
+	}
+
+	// Panggil usecase nyata untuk save profile & bikin wallet otomatis ke Supabase!
+	err := h.userUsecase.RegisterNewUserProfile(c.Request.Context(), newUser)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
 	c.JSON(http.StatusCreated, gin.H{
 		"message": "Profil pengguna dan dompet RekberPay berhasil diamankan!",
 		"user_id": req.ID,
 	})
 }
 
-// AuthRoleMiddleware bertindak sebagai tameng keamanan (RBAC) di layer HTTP
-// Mencegah user biasa menembak endpoint sensitif milik Admin, EO, atau Merchant
 func AuthRoleMiddleware(allowedRoles ...domain.UserRole) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// Fase MVP: Untuk pengujian lokal, kita membaca role dari Header Request
-		// Di fase produksi nanti, bagian ini diganti dengan ekstraksi claims dari JWT Token
+
 		userRole := c.GetHeader("X-User-Role")
 		
 		if userRole == "" {
