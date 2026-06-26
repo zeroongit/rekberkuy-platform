@@ -8,18 +8,18 @@ import (
 	"rekberkuy/core-service/internal/domain"
 )
 
-type transactionRepository struct {
+type TransactionRepository struct {
 	db *sql.DB
 	tx *sql.Tx
 }
 
-// NewTransactionRepository menginisialisasi adapter database untuk transaksi escrow
+
 func NewTransactionRepository(db *sql.DB) domain.TransactionRepository {
-	return &transactionRepository{db: db}
+	return &TransactionRepository{db: db}
 }
 
 // CreateTransaction menyimpan data master transaksi escrow murni IDR ke database Supabase
-func (r *transactionRepository) CreateTransaction(ctx context.Context, tx *domain.Transaction) error {
+func (r *TransactionRepository) CreateTransaction(ctx context.Context, tx *domain.Transaction) error {
 	query := `
 		INSERT INTO transactions (
 			id, buyer_id, seller_id, type, status, amount_base, shipping_fee, 
@@ -53,7 +53,7 @@ func (r *transactionRepository) CreateTransaction(ctx context.Context, tx *domai
 }
 
 // GetTransactionByID mengambil detail data transaksi lengkap dengan pengunci baris (FOR UPDATE)
-func (r *transactionRepository) GetTransactionByID(ctx context.Context, id string) (*domain.Transaction, error) {
+func (r *TransactionRepository) GetTransactionByID(ctx context.Context, id string) (*domain.Transaction, error) {
 	query := `
 		SELECT id, buyer_id, seller_id, type, status, amount_base, shipping_fee, 
 		       service_fee, midtrans_fee, amount_gross, amount_net, 
@@ -97,7 +97,7 @@ func (r *transactionRepository) GetTransactionByID(ctx context.Context, id strin
 }
 
 // UpdateTransactionStatus memproses transisi State Machine (Universal State Machine)
-func (r *transactionRepository) UpdateTransactionStatus(ctx context.Context, id string, status domain.TransactionStatus) error {
+func (r *TransactionRepository) UpdateTransactionStatus(ctx context.Context, id string, status domain.TransactionStatus) error {
 	query := `
 		UPDATE transactions 
 		SET status = $1, updated_at = NOW() 
@@ -115,4 +115,29 @@ func (r *transactionRepository) UpdateTransactionStatus(ctx context.Context, id 
 		return fmt.Errorf("gagal memperbarui status transaksi: %w", err)
 	}
 	return nil
+}
+
+
+func (r *TransactionRepository) GetExpiredLockedTransactions(ctx context.Context) ([]string, error) {
+	query := `
+		SELECT t.id 
+		FROM transactions t
+		JOIN transaction_goods tg ON t.id = tg.transaction_id
+		WHERE t.status = 'FUNDS_LOCKED' AND tg.auto_confirm_deadline <= NOW()
+	`
+	rows, err := r.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("gagal kueri transaksi expired: %w", err)
+	}
+	defer rows.Close()
+
+	var ids []string
+	for rows.Next() {
+		var id string
+		if err := rows.Scan(&id); err != nil {
+			return nil, fmt.Errorf("gagal scan ID transaksi expired: %w", err)
+		}
+		ids = append(ids, id)
+	}
+	return ids, nil
 }

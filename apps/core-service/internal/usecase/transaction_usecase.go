@@ -186,3 +186,89 @@ func (u *TransactionUsecase) ReleaseMilestoneFunds(ctx context.Context, mileston
 		return nil
 	})
 }
+
+// ProcessEventVendorPayouts mengeksekusi pembagian dana escrow akhir ke seluruh vendor acara yang terlibat
+func (u *TransactionUsecase) ProcessEventVendorPayouts(ctx context.Context, transactionID string) error {
+	return u.walletRepo.ExecuteInTransaction(ctx, func(txRepo domain.WalletRepository) error {
+		
+		// 1. Ambil daftar alokasi dana vendor yang terikat dengan transaksi event ini
+		allocations, err := txRepo.GetVendorAllocationsByTxID(ctx, transactionID)
+		if err != nil {
+			return fmt.Errorf("gagal mengambil data alokasi vendor: %w", err)
+		}
+
+		if len(allocations) == 0 {
+			return fmt.Errorf("tidak ada alokasi vendor yang ditemukan untuk transaksi ini")
+		}
+
+		// 2. Loop dan tembak mutasi kredit saldo ke dompet RekberPay masing-masing vendor
+		for _, alloc := range allocations {
+			descMsg := fmt.Sprintf("Pencairan dana escrow Event untuk Vendor ID: %s (Alokasi Terikat)", alloc.VendorID)
+			
+			vendorTxLog := &domain.RekberPayTransaction{
+				ID:          uuid.New().String(),
+				WalletID:    alloc.VendorID, // Mengarah ke UUID dompet sang vendor
+				Type:        domain.TxReceiveFunds,
+				Status:      domain.WalletStatusSuccess,
+				Amount:      alloc.AllocatedAmount, // Cairkan sesuai jatah komitmen di awal
+				AdminFee:    0,
+				Description: &descMsg,
+			}
+
+			// Eksekusi mutasi saldo secara atomik
+			err := txRepo.UpdateBalanceTx(ctx, vendorTxLog, alloc.AllocatedAmount)
+			if err != nil {
+				return fmt.Errorf("gagal mencairkan dana ke vendor %s: %w", alloc.VendorID, err)
+			}
+		}
+
+		// 3. Update status induk transaksi menjadi RELEASED
+		// (Anda bisa memanggil fungsi UpdateTransactionStatus dari transactionRepo di sini)
+
+		return nil
+	})
+}
+
+// ReleaseEventMilestonePayout memproses pencairan dana bertahap untuk EO/Vendor berdasarkan invoice yang di-approve admin/mediator
+func (u *TransactionUsecase) ReleaseEventMilestonePayout(ctx context.Context, payoutID string) error {
+	return u.walletRepo.ExecuteInTransaction(ctx, func(txRepo domain.WalletRepository) error {
+		
+		// 1. Ambil data pengajuan payout/invoice target
+		payout, err := txRepo.GetVendorPayoutByID(ctx, payoutID)
+		if err != nil {
+			return fmt.Errorf("data pengajuan pembayaran termin event tidak ditemukan: %w", err)
+		}
+
+		// Validasi agar tidak terjadi pencairan ganda
+		if payout.Status == "APPROVED" {
+			return fmt.Errorf("transaksi gagal: dana termin ini sudah dicairkan sebelumnya")
+		}
+
+		// 2. Cairkan dana termin ke dompet RekberPay tujuan (bisa ke Rekening Vendor langsung atau Dompet EO)
+		descMsg := fmt.Sprintf("Pencairan dana Event termin [%s] - Kebutuhan: %s. Bukti: %s", payout.PayoutPhase, payout.ExpenseDescription, payout.InvoiceFileURL)
+		
+		payoutTxLog := &domain.RekberPayTransaction{
+			ID:          uuid.New().String(),
+			WalletID:    payout.TransactionID, // Mengikat ke ID Transaksi induk atau ID Dompet Penerima
+			Type:        domain.TxReceiveFunds,
+			Status:      domain.WalletStatusSuccess,
+			Amount:      payout.AmountRequested, // Cairkan HANYA sebesar nominal di invoice, bukan 100%
+			AdminFee:    0,
+			Description: &descMsg,
+		}
+
+		// Mutasi saldo masuk ke dompet penerima secara aman dan atomik
+		err = txRepo.UpdateBalanceTx(ctx, payoutTxLog, payout.AmountRequested)
+		if err != nil {
+			return fmt.Errorf("gagal mencairkan dana termin invoice ke dompet: %w", err)
+		}
+
+		// 3. Perbarui status invoice pengajuan di database menjadi APPROVED
+		err = txRepo.UpdateVendorPayoutStatus(ctx, payoutID, "APPROVED")
+		if err != nil {
+			return fmt.Errorf("gagal memperbarui status pengajuan payout: %w", err)
+		}
+
+		return nil
+	})
+}

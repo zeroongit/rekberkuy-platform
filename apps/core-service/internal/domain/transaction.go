@@ -129,4 +129,5 @@ type TransactionRepository interface {
 	CreateTransaction(ctx context.Context, tx *Transaction) error
 	GetTransactionByID(ctx context.Context, id string) (*Transaction, error)
 	UpdateTransactionStatus(ctx context.Context, id string, status TransactionStatus) error
+	GetExpiredLockedTransactions(ctx context.Context) ([]string, error)
 }

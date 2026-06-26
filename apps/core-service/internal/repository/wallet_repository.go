@@ -262,3 +262,114 @@ func (r *walletRepository) UpdateCRMLoyalty(ctx context.Context, crmProfile *dom
 
 	return nil
 }
+
+// GetVendorAllocationsByTxID mengambil daftar komitmen alokasi dana vendor dari tabel event_vendor_allocations via SQL Murni
+func (r *walletRepository) GetVendorAllocationsByTxID(ctx context.Context, transactionID string) ([]*domain.EventVendorAllocation, error) {
+	query := `
+		SELECT id, transaction_id, vendor_id, allocated_amount, actual_paid_amount, status, created_at
+		FROM event_vendor_allocations
+		WHERE transaction_id = $1
+	`
+	rows, err := r.db.QueryContext(ctx, query, transactionID)
+	if err != nil {
+		return nil, fmt.Errorf("gagal kueri alokasi vendor: %w", err)
+	}
+	defer rows.Close()
+
+	var allocations []*domain.EventVendorAllocation
+	for rows.Next() {
+		var alloc domain.EventVendorAllocation
+		err := rows.Scan(
+			&alloc.ID,
+			&alloc.TransactionID,
+			&alloc.VendorID,
+			&alloc.AllocatedAmount,
+			&alloc.ActualPaidAmount,
+			&alloc.Status,
+			&alloc.CreatedAt,
+		)
+		if err != nil {
+			return nil, fmt.Errorf("gagal scan baris alokasi vendor: %w", err)
+		}
+		allocations = append(allocations, &alloc)
+	}
+
+	if err = rows.Err(); err != nil {
+		return nil, err
+	}
+
+	return allocations, nil
+}
+
+// CreateVendorPayoutRecord mencatat invoice klaim pembayaran resmi sub-vendor ke database
+func (r *walletRepository) CreateVendorPayoutRecord(ctx context.Context, payout *domain.EventVendorPayout) error {
+	query := `
+		INSERT INTO event_vendor_payouts (
+			id, transaction_id, vendor_name, vendor_bank_name, vendor_account_number,
+			amount_requested, expense_description, invoice_file_url, payout_phase, status,
+			is_disbursed_by_midtrans, created_at
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+	`
+	_, err := r.db.ExecContext(ctx, query,
+		payout.ID,
+		payout.TransactionID,
+		payout.VendorName,
+		payout.VendorBankName,
+		payout.VendorAccountNumber,
+		payout.AmountRequested,
+		payout.ExpenseDescription,
+		payout.InvoiceFileURL,
+		payout.PayoutPhase,
+		payout.Status,
+		payout.IsDisbursedByMidtrans,
+	)
+	if err != nil {
+		return fmt.Errorf("gagal menyimpan data klaim payout vendor: %w", err)
+	}
+	return nil
+}
+
+// GetVendorPayoutByID mengambil data detail pengajuan invoice termin event berdasarkan Payout ID
+func (r *walletRepository) GetVendorPayoutByID(ctx context.Context, payoutID string) (*domain.EventVendorPayout, error) {
+	query := `
+		SELECT 
+			id, transaction_id, vendor_name, vendor_bank_name, vendor_account_number,
+			amount_requested, expense_description, invoice_file_url, payout_phase, status,
+			is_disbursed_by_midtrans, created_at
+		FROM event_vendor_payouts
+		WHERE id = $1
+	`
+	var payout domain.EventVendorPayout
+	err := r.db.QueryRowContext(ctx, query, payoutID).Scan(
+		&payout.ID,
+		&payout.TransactionID,
+		&payout.VendorName,
+		&payout.VendorBankName,
+		&payout.VendorAccountNumber,
+		&payout.AmountRequested,
+		&payout.ExpenseDescription,
+		&payout.InvoiceFileURL,
+		&payout.PayoutPhase,
+		&payout.Status,
+		&payout.IsDisbursedByMidtrans,
+		&payout.CreatedAt,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("gagal mengambil data pengajuan payout vendor: %w", err)
+	}
+	return &payout, nil
+}
+
+// UpdateVendorPayoutStatus memperbarui status persetujuan invoice (misal dari PENDING jadi APPROVED)
+func (r *walletRepository) UpdateVendorPayoutStatus(ctx context.Context, payoutID string, status string) error {
+	query := `
+		UPDATE event_vendor_payouts
+		SET status = $1
+		WHERE id = $2
+	`
+	_, err := r.db.ExecContext(ctx, query, status, payoutID)
+	if err != nil {
+		return fmt.Errorf("gagal memperbarui status pengajuan payout vendor: %w", err)
+	}
+	return nil
+}

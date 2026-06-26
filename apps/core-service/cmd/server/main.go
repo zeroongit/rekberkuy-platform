@@ -116,6 +116,12 @@ func main() {
 
 	txHandler := handlers.NewTransactionHandler(txUsecase)
 
+	userHandler := handlers.NewUserHandler()
+	// Inisialisasi Robot Auto-Release Baru Anda
+	// (Casting interface atau oper concrete pointer sesuai inisialisasi Repo Anda)
+	// releaseWorker := worker.NewAutoReleaseWorker(transactionRepo, txUsecase)
+	// releaseWorker.Start(context.Background())
+
 	r := gin.Default()
 
 	r.GET("/", func(c *gin.Context) {
@@ -127,11 +133,53 @@ func main() {
 
 	api := r.Group("/api/v1")
 	{
-		// Endpoints Utama Pengunci & Pencair Dana Escrow Barang
-		api.POST("/transactions", txHandler.LockFundsAwalHandler)
-		api.POST("/transactions/release", txHandler.ReleaseFundsHandler)
-		api.POST("/webhooks/midtrans", txHandler.MidtransWebhookHandler)
-		api.POST("/transactions/services/release-milestone", txHandler.ReleaseMilestoneHandler)
+		// ============================================================================
+		// 🔓 JALUR PUBLIK & SISTEM
+		// ============================================================================
+		api.POST("/users/register", userHandler.RegisterProfileHandler)
+		api.POST("/webhooks/midtrans", txHandler.MidtransWebhookHandler) 
+
+		// ============================================================================
+		// 🛍️ KLASTER TRANSAKSI BARANG (GOODS)
+		// ============================================================================
+		goods := api.Group("/transactions/goods")
+		{
+			// Siapa saja yang login (RoleUser/Buyer) bisa menginisialisasi transaksi beli barang
+			goods.POST("", handlers.AuthRoleMiddleware(domain.RoleUser), txHandler.LockFundsAwalHandler)
+			
+			// HANYA Pembeli (RoleUser) yang berhak mencairkan dana escrow barang setelah paket tiba
+			goods.POST("/release", handlers.AuthRoleMiddleware(domain.RoleUser), txHandler.ReleaseFundsHandler)
+		}
+
+		// ============================================================================
+		// 💼 KLASTER TRANSAKSI JASA (SERVICES - MILESTONE WORK)
+		// ============================================================================
+		services := api.Group("/transactions/services")
+		{
+			// Pembeli membuat kontrak kerja jasa baru
+			services.POST("", handlers.AuthRoleMiddleware(domain.RoleUser), txHandler.LockFundsAwalHandler)
+			
+			// Kritis: HANYA Pembeli (RoleUser) yang boleh me-release dana per termin/milestone jasa!
+			// Freelancer tidak boleh mencairkan uangnya sendiri tanpa persetujuan klien
+			services.POST("/release-milestone", handlers.AuthRoleMiddleware(domain.RoleUser), txHandler.ReleaseMilestoneHandler)
+		}
+
+		// ============================================================================
+		// 🎪 KLASTER TRANSAKSI ACARA (EVENTS - MULTI VENDOR)
+		// ============================================================================
+		events := api.Group("/transactions/events")
+		{
+			// Pembeli/Peserta membeli tiket atau mendanai event awal
+			events.POST("", handlers.AuthRoleMiddleware(domain.RoleUser), txHandler.LockFundsAwalHandler)
+			
+			// Proteksi Berlapis: Pencairan operasional bertahap berdasarkan invoice EO 
+			// HANYA bisa disetujui oleh ADMIN atau MEDIATOR resmi platform setelah bukti diperiksa
+			events.POST("/release-milestone", handlers.AuthRoleMiddleware(domain.RoleAdmin), txHandler.ReleaseEventMilestoneHandler)
+			
+			// Pemecahan dana final ke seluruh vendor lapangan (Gedung, Katering, dll)
+			// Hanya bisa dieksekusi oleh ADMIN atau EVENT_ORGANIZER setelah acara sukses selesai
+			events.POST("/release-vendors", handlers.AuthRoleMiddleware(domain.RoleEventOrganizer, domain.RoleAdmin), txHandler.ProcessEventVendorPayoutHandler)
+		}
 	}
 
 	port := os.Getenv("PORT")

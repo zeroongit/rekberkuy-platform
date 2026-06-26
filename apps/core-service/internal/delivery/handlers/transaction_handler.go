@@ -140,3 +140,49 @@ func (h *TransactionHandler) ReleaseMilestoneHandler(c *gin.Context) {
 		"message": "Dana jatah milestone termin berhasil dicairkan ke dompet freelancer!",
 	})
 }
+
+type ProcessVendorPayoutRequest struct {
+	TransactionID string `json:"transaction_id" binding:"required,uuid4"`
+}
+
+// ProcessEventVendorPayoutHandler menangani POST /api/v1/transactions/events/release-vendors
+func (h *TransactionHandler) ProcessEventVendorPayoutHandler(c *gin.Context) {
+	var req ProcessVendorPayoutRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Payload tidak valid: " + err.Error()})
+		return
+	}
+
+	err := h.txUsecase.ProcessEventVendorPayouts(c.Request.Context(), req.TransactionID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Sukses besar! Dana escrow event berhasil dipecah dan dikreditkan ke seluruh vendor lapangan!",
+	})
+}
+
+type ReleaseEventMilestoneRequest struct {
+	PayoutID string `json:"payout_id" binding:"required,uuid4"`
+}
+
+// ReleaseEventMilestoneHandler menangani POST /api/v1/transactions/events/release-milestone
+func (h *TransactionHandler) ReleaseEventMilestoneHandler(c *gin.Context) {
+	var req ReleaseEventMilestoneRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Payload tidak valid: " + err.Error()})
+		return
+	}
+
+	err := h.txUsecase.ReleaseEventMilestonePayout(c.Request.Context(), req.PayoutID)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"message": "Sukses! Dana termin event berbasis bukti invoice berhasil dicairkan!",
+	})
+}

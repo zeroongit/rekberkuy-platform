@@ -54,4 +54,8 @@ type WalletRepository interface {
 	ExecuteInTransaction(ctx context.Context, fn func(txRepo WalletRepository) error) error
 	GetCRMLoyaltyByUserID(ctx context.Context, userID string) (*CRMLoyalty, error)
 	UpdateCRMLoyalty(ctx context.Context, crmProfile *CRMLoyalty) error
+	GetVendorAllocationsByTxID(ctx context.Context, transactionID string) ([]*EventVendorAllocation, error)
+	CreateVendorPayoutRecord(ctx context.Context, payout *EventVendorPayout) error
+	GetVendorPayoutByID(ctx context.Context, payoutID string) (*EventVendorPayout, error)
+	UpdateVendorPayoutStatus(ctx context.Context, payoutID string, status string) error
 }
