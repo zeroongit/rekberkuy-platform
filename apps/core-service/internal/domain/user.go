@@ -3,6 +3,7 @@ package domain
 import (
 	"time"
 	"context"
+	"github.com/golang-jwt/jwt/v5"
 )
 
 type UserRole string
@@ -40,6 +41,13 @@ type CRMLoyalty struct {
 	TierEvaluationStartedAt time.Time   `gorm:"default:now()" json:"tier_evaluation_started_at"`
 	LastMonthEvaluatedAt    time.Time   `gorm:"default:now()" json:"last_month_evaluated_at"`
 	UpdatedAt               time.Time   `gorm:"default:now()" json:"updated_at"`
+}
+
+type JWTCustomClaims struct {
+	UserID   string   `json:"user_id"`
+	Username string   `json:"username"`
+	Role     UserRole `json:"role"`
+	jwt.RegisteredClaims
 }
 
 type UserRepository interface {

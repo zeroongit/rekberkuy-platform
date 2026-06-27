@@ -4,6 +4,11 @@ import (
 	"net/http"
 	"rekberkuy/core-service/internal/domain"
 	"rekberkuy/core-service/internal/usecase"
+	"os"
+	"strings"
+	"fmt"
+	"github.com/golang-jwt/jwt/v5"
+	"time"
 
 	"github.com/gin-gonic/gin"
 )
@@ -24,6 +29,48 @@ type RegisterUserRequest struct {
 	Username string `json:"username" binding:"required,min=4"`
 	FullName string `json:"full_name" binding:"required"`
 }
+
+type CreateTokenTestRequest struct {
+	UserID   string          `json:"user_id" binding:"required,uuid4"`
+	Username string          `json:"username" binding:"required"`
+	Role     domain.UserRole `json:"role" binding:"required"`
+}
+
+func (h *UserHandler) GenerateTokenTestHandler(c *gin.Context) {
+	var req CreateTokenTestRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	jwtSecret := os.Getenv("JWT_SECRET")
+	if jwtSecret == "" {
+		jwtSecret = "rekberkuy-super-secret-key-fase-mvp"
+	}
+
+	claims := &domain.JWTCustomClaims{
+		UserID:   req.UserID,
+		Username: req.Username,
+		Role:     req.Role,
+		RegisteredClaims: jwt.RegisteredClaims{
+			ExpiresAt: jwt.NewNumericDate(time.Now().Add(24 * time.Hour)), // Aktif 1 hari
+			IssuedAt:  jwt.NewNumericDate(time.Now()),
+		},
+	}
+
+	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims) 
+	tokenString, err := token.SignedString([]byte(jwtSecret))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Gagal generate token: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"token_type":   "Bearer",
+		"access_token": tokenString,
+	})
+}
+
 
 func (h *UserHandler) RegisterProfileHandler(c *gin.Context) {
 	var req RegisterUserRequest
@@ -55,28 +102,67 @@ func (h *UserHandler) RegisterProfileHandler(c *gin.Context) {
 
 func AuthRoleMiddleware(allowedRoles ...domain.UserRole) gin.HandlerFunc {
 	return func(c *gin.Context) {
-
-		userRole := c.GetHeader("X-User-Role")
-		
-		if userRole == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Akses ditolak: Token autentikasi atau rahasia role tidak ditemukan"})
+		// 1. Ambil header Authorization
+		authHeader := c.GetHeader("Authorization")
+		if authHeader == "" {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Akses ditolak: Header Authorization tidak ditemukan"})
 			c.Abort()
 			return
 		}
 
+		// 2. Ekstrak token dari format "Bearer <token>"
+		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
+		if tokenString == authHeader {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Akses ditolak: Format token harus 'Bearer <token>'"})
+			c.Abort()
+			return
+		}
+
+		// 3. Ambil JWT Secret dari environment/config
+		jwtSecret := os.Getenv("JWT_SECRET")
+		if jwtSecret == "" {
+			jwtSecret = "rekberkuy-super-secret-key-fase-mvp" // Fallback lokal
+		}
+
+		// 4. Parse dan validasi Token Claims
+		token, err := jwt.ParseWithClaims(tokenString, &domain.JWTCustomClaims{}, func(t *jwt.Token) (interface{}, error) {
+			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
+				return nil, fmt.Errorf("metode signing tidak terduga: %v", t.Header["alg"])
+			}
+			return []byte(jwtSecret), nil
+		})
+
+		if err != nil || !token.Valid {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Akses ditolak: Token tidak valid atau sudah kedaluwarsa: " + err.Error()})
+			c.Abort()
+			return
+		}
+
+		claims, ok := token.Claims.(*domain.JWTCustomClaims)
+		if !ok {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Akses ditolak: Gagal membaca payload token"})
+			c.Abort()
+			return
+		}
+
+		// 5. Validasi Role-Based Access Control (RBAC)
 		isAllowed := false
 		for _, role := range allowedRoles {
-			if string(role) == userRole {
+			if claims.Role == role {
 				isAllowed = true
 				break
 			}
 		}
 
 		if !isAllowed {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Hak akses ditolak: Anda tidak memiliki wewenang untuk mengeksekusi aksi finansial ini!"})
+			c.JSON(http.StatusForbidden, gin.H{"error": "Hak akses ditolak: Akun Anda tidak memiliki wewenang untuk rute finansial ini!"})
 			c.Abort()
 			return
 		}
+
+		// 6. Suntikkan User ID dan Data Claims ke Context Gin agar bisa dibaca oleh Usecase di baris bawah
+		c.Set("user_id", claims.UserID)
+		c.Set("user_role", string(claims.Role))
 
 		c.Next()
 	}

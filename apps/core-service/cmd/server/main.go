@@ -133,6 +133,7 @@ func main() {
 	{
 		// 🔓 JALUR PUBLIK & SISTEM
 		api.POST("/users/register", userHandler.RegisterProfileHandler)
+		api.POST("/users/token-test", userHandler.GenerateTokenTestHandler)
 		api.POST("/webhooks/midtrans", txHandler.MidtransWebhookHandler)
 
 		// 🛍️ KLASTER TRANSAKSI BARANG (GOODS)
