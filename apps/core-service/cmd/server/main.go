@@ -21,10 +21,8 @@ import (
 )
 
 func main() {
-	// 1. LOAD CONFIG TERPUSAT (MENGGANTIKAN GODOTENV MANUAL)
 	cfg := config.LoadConfig()
 
-	// 2. INISIALISASI DATABASE VIA GORM
 	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})
@@ -32,7 +30,7 @@ func main() {
 		log.Fatalf("❌ Gagal membuat koneksi database via GORM: %v", err)
 	}
 
-	// Set parameter Connection Pool skala industri
+
 	sqlDB, err := db.DB()
 	if err != nil {
 		log.Fatalf("❌ Gagal mengambil instance sql.DB dari GORM: %v", err)
@@ -43,11 +41,12 @@ func main() {
 
 	fmt.Println("🚀 HORE! Backend Go GORM berhasil terhubung dengan aman ke Database Supabase!")
 
-	// 3. AUTOMIGRATE MULTI-PHASE ISOLATED MIGRATION (ANTI-DEADLOCK CONSTRAINT)
+
 	log.Println("Memulai proses AutoMigrate Tahap 1 (Tabel Master & Utama)...")
 	err = db.AutoMigrate(
 		&domain.UserProfile{},
 		&domain.RekberPayWallet{},
+		&domain.PlatformFinance{},
 		&domain.CRMLoyalty{},
 		&domain.VendorCategoryModel{},
 		&domain.KYCSubmission{},
@@ -90,32 +89,33 @@ func main() {
 	log.Println("🎉 SUKSES BULAT! Seluruh 16 tabel terpasang murni tanpa celah di Supabase!")
 
 	// ============================================================================
-	// 📦 4. DEPENDENCY INJECTION MAPPING (REPOS, USECASES, HANDLERS)
+	// 📦 . DEPENDENCY INJECTION MAPPING (REPOS, USECASES, HANDLERS)
 	// ============================================================================
 	
 	// Repository Layer
 	walletRepo := repository.NewWalletRepository(sqlDB)
 	transactionRepo := repository.NewTransactionRepository(sqlDB)
-	userRepo := repository.NewUserRepository(sqlDB) // <- SUDAH AKTIF NYATA
+	userRepo := repository.NewUserRepository(sqlDB) 
+	financeRepo := repository.NewFinanceRepository(sqlDB)
 
 	// Usecase Layer
 	financeCalc := usecase.NewFinanceCalculator()
 	txUsecase := usecase.NewTransactionUsecase(transactionRepo, walletRepo, financeCalc)
-	userUsecase := usecase.NewUserUsecase(userRepo, walletRepo) // <- SUDAH AKTIF NYATA
+	userUsecase := usecase.NewUserUsecase(userRepo, walletRepo) 
+	_ = financeRepo
 
 	// Handler Layer
 	txHandler := handlers.NewTransactionHandler(txUsecase)
-	userHandler := handlers.NewUserHandler(userUsecase) // <- SEKARANG MENERIMA USECASE NYATA
+	userHandler := handlers.NewUserHandler(userUsecase) 
 
 	// ============================================================================
-	// 🤖 5. MENYALAKAN BACKGROUND WORKER ROBOT PATROLI
+	// 🤖 . MENYALAKAN BACKGROUND WORKER ROBOT PATROLI
 	// ============================================================================
-	// Cast repository konkret jika diperlukan, atau passing langsung sesuai tipe
 	releaseWorker := worker.NewAutoReleaseWorker(transactionRepo, txUsecase)
 	releaseWorker.Start(context.Background())
 
 	// ============================================================================
-	// 📡 6. HTTP ROUTING ENGINE & MIDDLEWARE PROTECTION
+	// 📡 . HTTP ROUTING ENGINE & MIDDLEWARE PROTECTION
 	// ============================================================================
 	r := gin.Default()
 
