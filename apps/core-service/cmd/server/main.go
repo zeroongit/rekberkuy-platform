@@ -47,6 +47,7 @@ func main() {
 		&domain.UserProfile{},
 		&domain.RekberPayWallet{},
 		&domain.PlatformFinance{},
+		&domain.IdempotencyRecord{},
 		&domain.CRMLoyalty{},
 		&domain.VendorCategoryModel{},
 		&domain.KYCSubmission{},
@@ -97,12 +98,14 @@ func main() {
 	transactionRepo := repository.NewTransactionRepository(sqlDB)
 	userRepo := repository.NewUserRepository(sqlDB) 
 	financeRepo := repository.NewFinanceRepository(sqlDB)
+	idemRepo := repository.NewIdempotencyRepository(sqlDB)
 
 	// Usecase Layer
 	financeCalc := usecase.NewFinanceCalculator()
 	txUsecase := usecase.NewTransactionUsecase(transactionRepo, walletRepo, financeCalc)
 	userUsecase := usecase.NewUserUsecase(userRepo, walletRepo) 
 	_ = financeRepo
+	_ = idemRepo
 
 	// Handler Layer
 	txHandler := handlers.NewTransactionHandler(txUsecase)
@@ -121,6 +124,7 @@ func main() {
 
 	// Pasang tameng CORS untuk membuka gerbang integrasi dengan Next.js
 	r.Use(handlers.CORSMiddleware())
+	r.Use(handlers.IdempotencyMiddleware(idemRepo))
 
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{

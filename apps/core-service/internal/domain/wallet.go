@@ -46,6 +46,19 @@ type RekberPayTransaction struct {
 	CreatedAt              time.Time       `gorm:"default:now()" json:"created_at"`
 }
 
+
+type IdempotencyRecord struct {
+	ID             string    `json:"id"` 
+	RequestPath    string    `json:"request_path"`
+	ResponseBody   []byte    `json:"response_body"`
+	ResponseStatus int       `json:"response_status"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+type IdempotencyRepository interface {
+	CheckOrLock(ctx context.Context, record *IdempotencyRecord) (*IdempotencyRecord, bool, error)
+}
+
 type WalletRepository interface {
 	GetBalance(ctx context.Context, userID string) (*RekberPayWallet, error)
 	CreateWallet(ctx context.Context, userID string) error
