@@ -104,6 +104,7 @@ func main() {
 	financeCalc := usecase.NewFinanceCalculator()
 	txUsecase := usecase.NewTransactionUsecase(transactionRepo, walletRepo, financeCalc)
 	userUsecase := usecase.NewUserUsecase(userRepo, walletRepo) 
+	walletHandler := handlers.NewWalletHandler(userUsecase)
 	_ = financeRepo
 	_ = idemRepo
 
@@ -160,6 +161,12 @@ func main() {
 			events.POST("", handlers.AuthRoleMiddleware(domain.RoleUser), txHandler.LockFundsAwalHandler)
 			events.POST("/release-milestone", handlers.AuthRoleMiddleware(domain.RoleAdmin), txHandler.ReleaseEventMilestoneHandler)
 			events.POST("/release-vendors", handlers.AuthRoleMiddleware(domain.RoleEventOrganizer, domain.RoleAdmin), txHandler.ProcessEventVendorPayoutHandler)
+		}
+
+		wallets := api.Group("/wallets")
+		{
+			// Hanya user terautentikasi yang bisa memicu top-up lewat gerbang tersembunyi
+			wallets.POST("/topup", handlers.AuthRoleMiddleware(domain.RoleUser), walletHandler.CreateTopUpHandler)
 		}
 	}
 
