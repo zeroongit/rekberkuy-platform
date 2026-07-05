@@ -141,3 +141,44 @@ func (r *TransactionRepository) GetExpiredLockedTransactions(ctx context.Context
 	}
 	return ids, nil
 }
+
+func (r *TransactionRepository) GetMilestoneByID(ctx context.Context, id string) (*domain.ServiceMilestone, error) {
+	query := `SELECT id, transaction_id, milestone_index, title, amount, status FROM service_milestones WHERE id = $1`
+	var m domain.ServiceMilestone
+	err := r.db.QueryRowContext(ctx, query, id).Scan(&m.ID, &m.TransactionID, &m.MilestoneIndex, &m.Title, &m.Amount, &m.Status)
+	if err != nil {
+		return nil, fmt.Errorf("milestone tidak ditemukan: %w", err)
+	}
+	return &m, nil
+}
+
+func (r *TransactionRepository) UpdateMilestoneStatus(ctx context.Context, id string, status string) error {
+	query := `UPDATE service_milestones SET status = $1, released_at = NOW() WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, status, id)
+	return err
+}
+
+func (r *TransactionRepository) GetEventVendorPayoutsByTxID(ctx context.Context, txID string) ([]domain.EventVendorPayout, error) {
+	query := `SELECT id, transaction_id, vendor_name, amount_requested, status FROM event_vendor_payouts WHERE transaction_id = $1`
+	rows, err := r.db.QueryContext(ctx, query, txID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var payouts []domain.EventVendorPayout
+	for rows.Next() {
+		var p domain.EventVendorPayout
+		if err := rows.Scan(&p.ID, &p.TransactionID, &p.VendorName, &p.AmountRequested, &p.Status); err != nil {
+			return nil, err
+		}
+		payouts = append(payouts, p)
+	}
+	return payouts, nil
+}
+
+func (r *TransactionRepository) UpdateEventVendorPayoutStatus(ctx context.Context, id string, status string) error {
+	query := `UPDATE event_vendor_payouts SET status = $1, reviewed_at = NOW() WHERE id = $2`
+	_, err := r.db.ExecContext(ctx, query, status, id)
+	return err
+}

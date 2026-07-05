@@ -227,4 +227,9 @@ type TransactionRepository interface {
 	GetTransactionByID(ctx context.Context, id string) (*Transaction, error)
 	UpdateTransactionStatus(ctx context.Context, id string, status TransactionStatus) error
 	GetExpiredLockedTransactions(ctx context.Context) ([]string, error)
+
+	GetMilestoneByID(ctx context.Context, id string) (*ServiceMilestone, error)
+	UpdateMilestoneStatus(ctx context.Context, id string, status string) error
+	GetEventVendorPayoutsByTxID(ctx context.Context, txID string) ([]EventVendorPayout, error)
+	UpdateEventVendorPayoutStatus(ctx context.Context, id string, status string) error
 }

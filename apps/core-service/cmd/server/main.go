@@ -102,7 +102,7 @@ func main() {
 
 	// Usecase Layer
 	financeCalc := usecase.NewFinanceCalculator()
-	txUsecase := usecase.NewTransactionUsecase(transactionRepo, walletRepo, financeCalc)
+	txUsecase := usecase.NewTransactionUsecase(transactionRepo, walletRepo, financeRepo, financeCalc)
 	userUsecase := usecase.NewUserUsecase(userRepo, walletRepo) 
 	walletHandler := handlers.NewWalletHandler(userUsecase)
 	_ = financeRepo

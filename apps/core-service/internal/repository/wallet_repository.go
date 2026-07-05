@@ -170,7 +170,7 @@ func (r *walletRepository) UpdateBalanceTx(ctx context.Context, txRecord *domain
 	return nil
 }
 
-// GetAllUsersForCRMEvaluation mengambil seluruh data profil pengguna (Patuhi kontrak kembalian []*domain.UserProfile)
+// GetAllUsers ForCRMEvaluation mengambil seluruh data profil pengguna
 func (r *walletRepository) GetAllUsersForCRMEvaluation(ctx context.Context) ([]*domain.UserProfile, error) {
 	query := `
 		SELECT id, username, full_name, role, phone_number, created_at, updated_at FROM user_profiles
@@ -263,20 +263,28 @@ func (r *walletRepository) UpdateCRMLoyalty(ctx context.Context, crmProfile *dom
 	return nil
 }
 
-// GetVendorAllocationsByTxID mengambil daftar komitmen alokasi dana vendor dari tabel event_vendor_allocations via SQL Murni
+// GetVendorAllocationsByTxID mengambil daftar komitmen alokasi dana vendor dengan tipe slice pointer []*domain.EventVendorAllocation
 func (r *walletRepository) GetVendorAllocationsByTxID(ctx context.Context, transactionID string) ([]*domain.EventVendorAllocation, error) {
 	query := `
 		SELECT id, transaction_id, vendor_id, allocated_amount, actual_paid_amount, status, created_at
 		FROM event_vendor_allocations
 		WHERE transaction_id = $1
 	`
-	rows, err := r.db.QueryContext(ctx, query, transactionID)
+	var rows *sql.Rows
+	var err error
+
+	if r.tx != nil {
+		rows, err = r.tx.QueryContext(ctx, query, transactionID)
+	} else {
+		rows, err = r.db.QueryContext(ctx, query, transactionID)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("gagal kueri alokasi vendor: %w", err)
 	}
 	defer rows.Close()
 
-	var allocations []*domain.EventVendorAllocation
+	var allocations []*domain.EventVendorAllocation 
 	for rows.Next() {
 		var alloc domain.EventVendorAllocation
 		err := rows.Scan(
@@ -291,7 +299,7 @@ func (r *walletRepository) GetVendorAllocationsByTxID(ctx context.Context, trans
 		if err != nil {
 			return nil, fmt.Errorf("gagal scan baris alokasi vendor: %w", err)
 		}
-		allocations = append(allocations, &alloc)
+		allocations = append(allocations, &alloc) // 👈 Ambil pointernya (&alloc)
 	}
 
 	if err = rows.Err(); err != nil {
@@ -300,7 +308,6 @@ func (r *walletRepository) GetVendorAllocationsByTxID(ctx context.Context, trans
 
 	return allocations, nil
 }
-
 // CreateVendorPayoutRecord mencatat invoice klaim pembayaran resmi sub-vendor ke database
 func (r *walletRepository) CreateVendorPayoutRecord(ctx context.Context, payout *domain.EventVendorPayout) error {
 	query := `
@@ -310,19 +317,21 @@ func (r *walletRepository) CreateVendorPayoutRecord(ctx context.Context, payout 
 			is_disbursed_by_midtrans, created_at
 		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
 	`
-	_, err := r.db.ExecContext(ctx, query,
-		payout.ID,
-		payout.TransactionID,
-		payout.VendorName,
-		payout.VendorBankName,
-		payout.VendorAccountNumber,
-		payout.AmountRequested,
-		payout.ExpenseDescription,
-		payout.InvoiceFileURL,
-		payout.PayoutPhase,
-		payout.Status,
-		payout.IsDisbursedByMidtrans,
-	)
+	var err error
+	if r.tx != nil {
+		_, err = r.tx.ExecContext(ctx, query,
+			payout.ID, payout.TransactionID, payout.VendorName, payout.VendorBankName, payout.VendorAccountNumber,
+			payout.AmountRequested, payout.ExpenseDescription, payout.InvoiceFileURL, payout.PayoutPhase, payout.Status,
+			payout.IsDisbursedByMidtrans,
+		)
+	} else {
+		_, err = r.db.ExecContext(ctx, query,
+			payout.ID, payout.TransactionID, payout.VendorName, payout.VendorBankName, payout.VendorAccountNumber,
+			payout.AmountRequested, payout.ExpenseDescription, payout.InvoiceFileURL, payout.PayoutPhase, payout.Status,
+			payout.IsDisbursedByMidtrans,
+		)
+	}
+
 	if err != nil {
 		return fmt.Errorf("gagal menyimpan data klaim payout vendor: %w", err)
 	}
@@ -340,34 +349,42 @@ func (r *walletRepository) GetVendorPayoutByID(ctx context.Context, payoutID str
 		WHERE id = $1
 	`
 	var payout domain.EventVendorPayout
-	err := r.db.QueryRowContext(ctx, query, payoutID).Scan(
-		&payout.ID,
-		&payout.TransactionID,
-		&payout.VendorName,
-		&payout.VendorBankName,
-		&payout.VendorAccountNumber,
-		&payout.AmountRequested,
-		&payout.ExpenseDescription,
-		&payout.InvoiceFileURL,
-		&payout.PayoutPhase,
-		&payout.Status,
-		&payout.IsDisbursedByMidtrans,
-		&payout.CreatedAt,
-	)
+	var err error
+
+	if r.tx != nil {
+		err = r.tx.QueryRowContext(ctx, query, payoutID).Scan(
+			&payout.ID, &payout.TransactionID, &payout.VendorName, &payout.VendorBankName, &payout.VendorAccountNumber,
+			&payout.AmountRequested, &payout.ExpenseDescription, &payout.InvoiceFileURL, &payout.PayoutPhase, &payout.Status,
+			&payout.IsDisbursedByMidtrans, &payout.CreatedAt,
+		)
+	} else {
+		err = r.db.QueryRowContext(ctx, query, payoutID).Scan(
+			&payout.ID, &payout.TransactionID, &payout.VendorName, &payout.VendorBankName, &payout.VendorAccountNumber,
+			&payout.AmountRequested, &payout.ExpenseDescription, &payout.InvoiceFileURL, &payout.PayoutPhase, &payout.Status,
+			&payout.IsDisbursedByMidtrans, &payout.CreatedAt,
+		)
+	}
+
 	if err != nil {
 		return nil, fmt.Errorf("gagal mengambil data pengajuan payout vendor: %w", err)
 	}
 	return &payout, nil
 }
 
-// UpdateVendorPayoutStatus memperbarui status persetujuan invoice (misal dari PENDING jadi APPROVED)
+// UpdateVendorPayoutStatus memperbarui status persetujuan invoice di dalam lingkup ACID
 func (r *walletRepository) UpdateVendorPayoutStatus(ctx context.Context, payoutID string, status string) error {
 	query := `
 		UPDATE event_vendor_payouts
 		SET status = $1
 		WHERE id = $2
 	`
-	_, err := r.db.ExecContext(ctx, query, status, payoutID)
+	var err error
+	if r.tx != nil {
+		_, err = r.tx.ExecContext(ctx, query, status, payoutID)
+	} else {
+		_, err = r.db.ExecContext(ctx, query, status, payoutID)
+	}
+
 	if err != nil {
 		return fmt.Errorf("gagal memperbarui status pengajuan payout vendor: %w", err)
 	}
