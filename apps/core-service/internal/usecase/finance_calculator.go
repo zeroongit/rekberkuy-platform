@@ -1,7 +1,7 @@
 package usecase
 
 import (
-	"rekberkuy/core-service/internal/domain" // Sesuaikan path go.mod Anda
+	"rekberkuy/core-service/internal/domain" 
 )
 
 type FinanceCalculator struct{}

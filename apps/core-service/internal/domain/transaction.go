@@ -5,6 +5,7 @@ import (
 	"time"
 )
 
+
 const (
 	MaxMemberEventLimit  = 10000000 
 	QRISTotalFeePercent  = 0.01     
@@ -51,82 +52,24 @@ type Transaction struct {
 	UpdatedAt          time.Time         `gorm:"default:now()" json:"updated_at"`
 }
 
-// ============================================================================
-// 🛍️ KLASTER KATEGORI & TRANSAKSI BARANG (GOODS)
-// ============================================================================
-
 type TransactionGoods struct {
 	TransactionID          string              `gorm:"type:uuid;primaryKey;not null" json:"transaction_id"`
 	Transaction            Transaction         `gorm:"foreignKey:TransactionID;constraint:OnDelete:CASCADE"`
-	SubSubCategoryID      uint64              `gorm:"not null" json:"sub_sub_category_id"` 
-	SubSubCategory        GoodsSubSubCategory `gorm:"foreignKey:SubSubCategoryID" json:"-"` 
+	SubSubCategoryID      uint64              `gorm:"not null" json:"sub_sub_category_id"`
+	SubSubCategory        GoodsSubSubCategory `gorm:"foreignKey:SubSubCategoryID" json:"-"`
 	ShippingCourier        string              `gorm:"type:varchar(100);not null" json:"shipping_courier"`
 	ShippingTrackingNumber *string             `gorm:"type:varchar(255)" json:"shipping_tracking_number,omitempty"`
 	ShippingAddress        string              `gorm:"type:text;not null" json:"shipping_address"`
 	AutoConfirmDeadline    time.Time           `gorm:"not null" json:"auto_confirm_deadline"`
 }
 
-type GoodsCategory struct {
-	ID        uint64    `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name      string    `gorm:"type:varchar(100);not null;unique" json:"name"`
-	Slug      string    `gorm:"type:varchar(100);not null;unique" json:"slug"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-type GoodsSubCategory struct {
-	ID         uint64        `gorm:"primaryKey;autoIncrement" json:"id"`
-	CategoryID uint64        `gorm:"not null" json:"category_id"`
-	Category   GoodsCategory `gorm:"foreignKey:CategoryID;constraint:OnDelete:CASCADE" json:"-"`
-	Name       string        `gorm:"type:varchar(100);not null" json:"name"`
-	Slug       string        `gorm:"type:varchar(100);not null;unique" json:"slug"`
-	CreatedAt  time.Time     `json:"created_at"`
-}
-
-type GoodsSubSubCategory struct {
-	ID            uint64           `gorm:"primaryKey;autoIncrement" json:"id"`
-	SubCategoryID uint64           `gorm:"not null" json:"sub_category_id"`
-	SubCategory   GoodsSubCategory `gorm:"foreignKey:SubCategoryID;constraint:OnDelete:CASCADE" json:"-"`
-	Name          string           `gorm:"type:varchar(100);not null" json:"name"`
-	Slug          string           `gorm:"type:varchar(100);not null;unique" json:"slug"`
-	CreatedAt     time.Time        `json:"created_at"`
-}
-
-// ============================================================================
-// 💼 KLASTER KATEGORI & TRANSAKSI JASA (SERVICES)
-// ============================================================================
-
 type TransactionServices struct {
 	TransactionID    string                `gorm:"type:uuid;primaryKey;not null" json:"transaction_id"`
 	Transaction      Transaction           `gorm:"foreignKey:TransactionID;constraint:OnDelete:CASCADE"`
-	SubSubCategoryID uint64                `gorm:"not null" json:"sub_sub_category_id"` // 👈 DIKAITKAN
-	SubSubCategory   ServiceSubSubCategory `gorm:"foreignKey:SubSubCategoryID" json:"-"` // 👈 DIKAITKAN
+	SubSubCategoryID uint64                `gorm:"not null" json:"sub_sub_category_id"`
+	SubSubCategory   ServiceSubSubCategory `gorm:"foreignKey:SubSubCategoryID" json:"-"`
 	ProjectDeadline  time.Time             `gorm:"not null" json:"project_deadline"`
 	BriefDescription string                `gorm:"type:text;not null" json:"brief_description"`
-}
-
-type ServiceCategory struct {
-	ID        uint64    `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name      string    `gorm:"type:varchar(100);not null;unique" json:"name"`
-	Slug      string    `gorm:"type:varchar(100);not null;unique" json:"slug"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-type ServiceSubCategory struct {
-	ID         uint64          `gorm:"primaryKey;autoIncrement" json:"id"`
-	CategoryID uint64          `gorm:"not null" json:"category_id"`
-	Category   ServiceCategory `gorm:"foreignKey:CategoryID;constraint:OnDelete:CASCADE" json:"-"`
-	Name       string          `gorm:"type:varchar(100);not null" json:"name"`
-	Slug       string          `gorm:"type:varchar(100);not null;unique" json:"slug"`
-	CreatedAt  time.Time       `json:"created_at"`
-}
-
-type ServiceSubSubCategory struct {
-	ID            uint64             `gorm:"primaryKey;autoIncrement" json:"id"`
-	SubCategoryID uint64             `gorm:"not null" json:"sub_category_id"`
-	SubCategory   ServiceSubCategory `gorm:"foreignKey:SubCategoryID;constraint:OnDelete:CASCADE" json:"-"`
-	Name          string             `gorm:"type:varchar(100);not null" json:"name"`
-	Slug          string             `gorm:"type:varchar(100);not null;unique" json:"slug"`
-	CreatedAt     time.Time          `json:"created_at"`
 }
 
 type ServiceMilestone struct {
@@ -141,44 +84,15 @@ type ServiceMilestone struct {
 	CreatedAt      time.Time           `gorm:"default:now()" json:"created_at"`
 }
 
-// ============================================================================
-// 🎪 KLASTER KATEGORI & TRANSAKSI ACARA (EVENTS)
-// ============================================================================
-
 type TransactionEvents struct {
 	TransactionID       string              `gorm:"type:uuid;primaryKey;not null" json:"transaction_id"`
 	Transaction         Transaction         `gorm:"foreignKey:TransactionID;constraint:OnDelete:CASCADE"`
-	SubSubCategoryID    uint64              `gorm:"not null" json:"sub_sub_category_id"` // 👈 DIKAITKAN
-	SubSubCategory      EventSubSubCategory `gorm:"foreignKey:SubSubCategoryID" json:"-"` // 👈 DIKAITKAN
+	SubSubCategoryID    uint64              `gorm:"not null" json:"sub_sub_category_id"`
+	SubSubCategory      EventSubSubCategory `gorm:"foreignKey:SubSubCategoryID" json:"-"`
 	EventName           string              `gorm:"type:varchar(255);not null" json:"event_name"`
 	EventStartTime      time.Time           `gorm:"not null" json:"event_start_time"`
 	EventEndTime        time.Time           `gorm:"not null" json:"event_end_time"`
 	TicketQuantityTotal int                 `gorm:"type:integer;not null;default:0" json:"ticket_quantity_total"`
-}
-
-type EventCategory struct {
-	ID        uint64    `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name      string    `gorm:"type:varchar(100);not null;unique" json:"name"`
-	Slug      string    `gorm:"type:varchar(100);not null;unique" json:"slug"`
-	CreatedAt time.Time `json:"created_at"`
-}
-
-type EventSubCategory struct {
-	ID         uint64        `gorm:"primaryKey;autoIncrement" json:"id"`
-	CategoryID uint64        `gorm:"not null" json:"category_id"`
-	Category   EventCategory `gorm:"foreignKey:CategoryID;constraint:OnDelete:CASCADE" json:"-"`
-	Name       string        `gorm:"type:varchar(100);not null" json:"name"`
-	Slug       string        `gorm:"type:varchar(100);not null;unique" json:"slug"`
-	CreatedAt  time.Time     `json:"created_at"`
-}
-
-type EventSubSubCategory struct {
-	ID            uint64           `gorm:"primaryKey;autoIncrement" json:"id"`
-	SubCategoryID uint64           `gorm:"not null" json:"sub_category_id"`
-	SubCategory   EventSubCategory `gorm:"foreignKey:SubCategoryID;constraint:OnDelete:CASCADE" json:"-"`
-	Name          string           `gorm:"type:varchar(100);not null" json:"name"`
-	Slug          string           `gorm:"type:varchar(100);not null;unique" json:"slug"`
-	CreatedAt     time.Time        `json:"created_at"`
 }
 
 type EventVendorPayout struct {
@@ -200,26 +114,25 @@ type EventVendorPayout struct {
 	CreatedAt             time.Time         `gorm:"default:now()" json:"created_at"`
 }
 
-// ============================================================================
-// ⚠️ KLASTER SENGKETA (DISPUTE) & REPOSITORI
-// ============================================================================
+type EventVendorAllocation struct {
+	ID               string            `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	TransactionID    string            `gorm:"type:uuid;not null;index" json:"transaction_id"`
+	EventTx          TransactionEvents `gorm:"foreignKey:TransactionID;constraint:OnDelete:CASCADE"`
+	VendorID         string            `gorm:"type:uuid;not null" json:"vendor_id"`
+	Vendor           VendorProfile     `gorm:"foreignKey:VendorID"`
+	AllocatedAmount  int64             `gorm:"type:bigint;not null" json:"allocated_amount"`
+	ActualPaidAmount int64             `gorm:"type:bigint;default:0" json:"actual_paid_amount"`
+	Status           string            `gorm:"type:varchar(50);default:'PLEDGED'" json:"status"`
+	CreatedAt        time.Time         `gorm:"default:now()" json:"created_at"`
+}
 
-type Dispute struct {
-	ID                string      `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
-	TransactionID     string      `gorm:"type:uuid;not null;unique" json:"transaction_id"`
-	Transaction       Transaction `gorm:"foreignKey:TransactionID;constraint:OnDelete:CASCADE"`
-	RaisedBy          string      `gorm:"type:uuid;not null" json:"raised_by"`
-	TargetPartyID     *string     `gorm:"type:uuid" json:"target_party_id,omitempty"`
-	MediatorID        *string     `gorm:"type:uuid" json:"mediator_id,omitempty"`
-	Raiser            UserProfile `gorm:"foreignKey:RaisedBy"`
-	Target            UserProfile `gorm:"foreignKey:TargetPartyID"`
-	Mediator          UserProfile `gorm:"foreignKey:MediatorID"`
-	Reason            string      `gorm:"type:text;not null" json:"reason"`
-	EvidenceURL       *string     `gorm:"type:text" json:"evidence_url,omitempty"`
-	IsResolved        bool        `gorm:"type:boolean;not null;default:false" json:"is_resolved"`
-	ResolutionSummary *string     `gorm:"type:text" json:"resolution_summary,omitempty"`
-	CreatedAt         time.Time   `gorm:"default:now()" json:"created_at"`
-	UpdatedAt         time.Time   `gorm:"default:now()" json:"updated_at"`
+type EventOfficialDetails struct {
+	TransactionID string            `gorm:"type:uuid;primaryKey;not null" json:"transaction_id"`
+	EventTx       TransactionEvents `gorm:"foreignKey:TransactionID;constraint:OnDelete:CASCADE"`
+	OrganizerID   string            `gorm:"type:uuid;not null" json:"organizer_id"`
+	Organizer     VendorProfile     `gorm:"foreignKey:OrganizerID"`
+	ManagementFee int64             `gorm:"type:bigint;not null" json:"management_fee"`
+	ApprovedAt    time.Time         `gorm:"default:now()" json:"approved_at"`
 }
 
 type TransactionRepository interface {
