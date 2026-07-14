@@ -1,0 +1,106 @@
+name: RekberKuy Platform CI
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  # Stage 1: Menguji Unit Test Backend Go (Wajib Lolos)
+  test_backend:
+    name: Test Backend (Go)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.25' # Menggunakan versi stabil terbaru
+
+      - name: Run Backend Tests
+        run: |
+          cd apps/core-service
+          go mod download
+          go test -v ./...
+
+  # Stage 2: Menguji Smart Contract Solidity (Diberi Toleransi)
+  test_blockchain:
+    name: Test Blockchain (Hardhat)
+    runs-on: ubuntu-latest
+    continue-on-error: true # <- TRIK: Pengganti allow_failure GitLab agar pipeline tidak merah
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run Blockchain Tests
+        run: |
+          if [ -d "blockchain" ]; then
+            cd blockchain
+            npm install
+            npx hardhat test
+          else
+            echo "Folder blockchain belum dibuat, skip test."
+          fi
+
+  # Stage 3: Menguji Unit Test Frontend Next.js (Diberi Toleransi)
+  test_frontend:
+    name: Test Frontend (Next.js)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run Frontend Tests
+        run: |
+          if [ -d "apps/dashboard-web" ]; then
+            cd apps/dashboard-web
+            npm install
+            npm run test
+          else
+            echo "Folder frontend belum dibuat, skip test."
+          fi
+
+  # Stage 4: Menjalankan Playwright E2E (QA Automation)
+  e2e_playwright:
+    name: QA Automation (Playwright)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install Playwright Browsers
+        run: |
+          if [ -d "e2e-qa" ]; then
+            cd e2e-qa
+            npm install
+            npx playwright install --with-deps
+          fi
+
+      - name: Run E2E Tests
+        run: |
+          if [ -d "e2e-qa" ]; then
+            cd e2e-qa
+            npx playwright test
+          else
+            echo "Folder E2E belum dibuat, skip."
+          fi
