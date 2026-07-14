@@ -1,23 +1,221 @@
-# Apps dependencies & builds
-node_modules/
-.next/
-out/
-dist/
-apps/core-backend/core-backend
+# =============================================================================
+# RekberKuy Platform — .gitignore
+# Monorepo: Go (core-service) · Next.js (dashboard-web) · Python (backend-ai)
+#           Hardhat/Solidity (blockchain) · E2E QA
+# =============================================================================
 
-# Hardhat & Blockchain artifacts
-artifacts/
-cache/
-typechain/
-typechain-types/
-
-# Environment variables & secrets (Sangat krusial untuk fintech!)
+# =============================================================================
+# 🔑 ENVIRONMENT VARIABLES & SECRETS (SANGAT KRUSIAL — JANGAN PERNAH DI-COMMIT)
+# =============================================================================
 .env
 .env.local
-.env.development.local
-.env.test.local
-.env.production.local
+.env.*.local
+.env.development
+.env.staging
+.env.production
+.env.test
 
-# OS files
+# Private key & credential files
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+credentials/
+
+# =============================================================================
+# 🐹 GO (apps/core-service)
+# =============================================================================
+# Build output
+apps/core-service/bin/
+apps/core-service/tmp/
+
+# Test coverage
+apps/core-service/coverage.out
+apps/core-service/coverage.html
+apps/core-service/*.test
+
+# Go workspace (kalau pakai go workspaces)
+go.work.sum
+
+# Air (live reload tool)
+apps/core-service/tmp/
+
+# =============================================================================
+# 🐍 PYTHON (backend-ai)
+# =============================================================================
+# Virtual environment
+backend-ai/.venv/
+backend-ai/venv/
+backend-ai/env/
+backend-ai/__pycache__/
+backend-ai/**/__pycache__/
+**/__pycache__/
+*.py[cod]
+*.pyo
+
+# Distribution & packaging
+backend-ai/dist/
+backend-ai/build/
+backend-ai/*.egg-info/
+backend-ai/.eggs/
+
+# Testing & coverage
+backend-ai/.pytest_cache/
+backend-ai/.coverage
+backend-ai/htmlcov/
+backend-ai/coverage.xml
+
+# Type checking
+backend-ai/.mypy_cache/
+backend-ai/.ruff_cache/
+
+# Jupyter Notebooks (kalau ada eksplorasi ML)
+backend-ai/.ipynb_checkpoints/
+*.ipynb_checkpoints/
+
+# Model files (terlalu besar untuk di-commit)
+backend-ai/models/*.pkl
+backend-ai/models/*.joblib
+backend-ai/models/*.h5
+backend-ai/models/*.pt
+backend-ai/models/*.bin
+
+# =============================================================================
+# ⚛️ NEXT.JS (apps/dashboard-web)
+# =============================================================================
+apps/dashboard-web/.next/
+apps/dashboard-web/out/
+apps/dashboard-web/dist/
+apps/dashboard-web/build/
+
+# Next.js cache
+apps/dashboard-web/.next/cache/
+
+# Vercel
+apps/dashboard-web/.vercel/
+
+# =============================================================================
+# 📦 NODE / NPM (apps/dashboard-web & blockchain)
+# =============================================================================
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnpm-store/
+.yarn/cache
+.yarn/unplugged
+.yarn/build-state.yml
+.yarn/install-state.gz
+
+# Package lock (pilih salah satu sesuai package manager yang dipakai)
+# Hapus baris di bawah jika menggunakan npm (package-lock.json perlu di-commit)
+# yarn.lock
+
+# =============================================================================
+# ⛓️ BLOCKCHAIN / HARDHAT (blockchain/)
+# =============================================================================
+blockchain/artifacts/
+blockchain/cache/
+blockchain/typechain/
+blockchain/typechain-types/
+
+# Hardhat deployment info (opsional, tergantung kebijakan tim)
+# blockchain/ignition/deployments/
+
+# Coverage Hardhat
+blockchain/coverage/
+blockchain/coverage.json
+
+# =============================================================================
+# 🧪 E2E QA (e2e-qa/)
+# =============================================================================
+e2e-qa/node_modules/
+e2e-qa/test-results/
+e2e-qa/playwright-report/
+e2e-qa/.playwright/
+
+# =============================================================================
+# 🐳 DOCKER
+# =============================================================================
+.docker/
+docker-compose.override.yml
+
+# =============================================================================
+# 📊 TEST COVERAGE & REPORTS (Global)
+# =============================================================================
+coverage/
+*.lcov
+test-results/
+junit.xml
+
+# =============================================================================
+# 🛠️ IDE & EDITOR
+# =============================================================================
+# VSCode
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json.example
+
+# JetBrains (GoLand, WebStorm, PyCharm)
+.idea/
+*.iml
+*.iws
+
+# Vim / Neovim
+*.swp
+*.swo
+*.swn
+Session.vim
+.netrwhist
+
+# Emacs
+*~
+\#*\#
+
+# =============================================================================
+# 💻 OS FILES
+# =============================================================================
+# macOS
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+.AppleDouble
+.LSOverride
+
+# Windows
 Thumbs.db
+Thumbs.db:encryptable
+ehthumbs.db
+Desktop.ini
+$RECYCLE.BIN/
+
+# Linux
+.fuse_hidden*
+.directory
+.Trash-*
+
+# =============================================================================
+# 📝 LOGS
+# =============================================================================
+logs/
+*.log
+*.log.*
+loglevel
+
+# =============================================================================
+# 🗄️ DATABASE & STORAGE (local development)
+# =============================================================================
+*.db
+*.sqlite
+*.sqlite3
+pgdata/
+redis-data/
+
+# Supabase local
+.supabase/
+supabase/.branches/
+supabase/.temp/
