@@ -62,7 +62,7 @@ func main() {
 	// 🏢 SEEDER: SUB-SUB-KATEGORI VENDOR (Tingkat 3 - Detil Komersial Lapangan)
 	// ============================================================================
 	
-	// Kita ambil ID untuk Sound System dan EO untuk pemetaan akurat
+	// Ambil ID untuk Sound System secara dinamis dari database untuk relasi FK Lapis 3
 	var soundSub domain.VendorSubCategory
 	db.Where("slug = ?", "sound-system").First(&soundSub)
 
@@ -78,7 +78,7 @@ func main() {
 				log.Printf("⚠️ SEEDER WARNING: Gagal memproses sub-sub-category %s: %v", subSubCategories[i].Name, err)
 			}
 		}
-		fmt.Println("✅ SEEDER: Lapis 3 Sub-Sub-Kategori (Spesialisasi Audio Audio Lapangan) siap.")
+		fmt.Println("✅ SEEDER: Lapis 3 Sub-Sub-Kategori (Spesialisasi Audio Lapangan) siap.")
 	}
 
 	fmt.Println("🎉 MANTAP! Seluruh data master taksonomi berhasil hidup di Supabase secara aman!")

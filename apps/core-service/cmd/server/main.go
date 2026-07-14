@@ -52,6 +52,8 @@ func main() {
 		&domain.EventSubCategory{},
 		&domain.EventSubSubCategory{},
 		&domain.VendorCategoryModel{},
+		&domain.VendorSubCategory{},   
+		&domain.VendorSubSubCategory{},
 		&domain.UserProfile{},
 		&domain.RekberPayWallet{},
 		&domain.PlatformFinance{},
