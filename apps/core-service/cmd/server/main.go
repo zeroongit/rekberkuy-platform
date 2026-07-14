@@ -30,7 +30,6 @@ func main() {
 		log.Fatalf("❌ Gagal membuat koneksi database via GORM: %v", err)
 	}
 
-
 	sqlDB, err := db.DB()
 	if err != nil {
 		log.Fatalf("❌ Gagal mengambil instance sql.DB dari GORM: %v", err)
@@ -41,15 +40,23 @@ func main() {
 
 	fmt.Println("🚀 HORE! Backend Go GORM berhasil terhubung dengan aman ke Database Supabase!")
 
-
-	log.Println("Memulai proses AutoMigrate Tahap 1 (Tabel Master & Utama)...")
+	log.Println("Memulai proses AutoMigrate Tahap 1 (Tabel Klasifikasi, Master & Utama)...")
 	err = db.AutoMigrate(
+		&domain.GoodsCategory{},
+		&domain.GoodsSubCategory{},
+		&domain.GoodsSubSubCategory{},
+		&domain.ServiceCategory{},
+		&domain.ServiceSubCategory{},
+		&domain.ServiceSubSubCategory{},
+		&domain.EventCategory{},
+		&domain.EventSubCategory{},
+		&domain.EventSubSubCategory{},
+		&domain.VendorCategoryModel{},
 		&domain.UserProfile{},
 		&domain.RekberPayWallet{},
 		&domain.PlatformFinance{},
 		&domain.IdempotencyRecord{},
 		&domain.CRMLoyalty{},
-		&domain.VendorCategoryModel{},
 		&domain.KYCSubmission{},
 		&domain.Transaction{},
 		&domain.RekberPayTransaction{},
@@ -58,9 +65,12 @@ func main() {
 		log.Fatalf("❌ CRITICAL: Proses AutoMigrate Tahap 1 Gagal: %v", err)
 	}
 
-	log.Println("Memulai proses AutoMigrate Tahap 2 (Eksekusi Mandiri Terisolasi)...")
+	log.Println("Memulai proses AutoMigrate Tahap 2 (Tabel Eksekusi Relasional Terisolasi)...")
 	if err := db.AutoMigrate(&domain.Dispute{}); err != nil {
 		log.Fatalf("❌ Gagal migrasi Dispute: %v", err)
+	}
+	if err := db.AutoMigrate(&domain.VendorProfile{}); err != nil {
+		log.Fatalf("❌ Gagal migrasi VendorProfile: %v", err)
 	}
 	if err := db.AutoMigrate(&domain.ServiceMilestone{}); err != nil {
 		log.Fatalf("❌ Gagal migrasi ServiceMilestone: %v", err)
@@ -83,89 +93,100 @@ func main() {
 	if err := db.AutoMigrate(&domain.EventVendorAllocation{}); err != nil {
 		log.Fatalf("❌ Gagal migrasi EventVendorAllocation: %v", err)
 	}
-	if err := db.AutoMigrate(&domain.VendorProfile{}); err != nil {
-		log.Fatalf("❌ Gagal migrasi VendorProfile: %v", err)
-	}
 
-	log.Println("🎉 SUKSES BULAT! Seluruh 16 tabel terpasang murni tanpa celah di Supabase!")
+	log.Println("🎉 SUKSES BULAT! Seluruh tabel terpasang murni secara modular di Supabase!")
 
 	// ============================================================================
-	// 📦 . DEPENDENCY INJECTION MAPPING (REPOS, USECASES, HANDLERS)
+	// 📦 DEPENDENCY INJECTION MAPPING (REPOS, USECASES, HANDLERS)
 	// ============================================================================
 	
-	// Repository Layer
+	// 1. Repository Layer
 	walletRepo := repository.NewWalletRepository(sqlDB)
 	transactionRepo := repository.NewTransactionRepository(sqlDB)
 	userRepo := repository.NewUserRepository(sqlDB) 
 	financeRepo := repository.NewFinanceRepository(sqlDB)
 	idemRepo := repository.NewIdempotencyRepository(sqlDB)
+	kycRepo := repository.NewKYCRepository(sqlDB)
+	vendorRepo := repository.NewVendorRepository(sqlDB)
 
-	// Usecase Layer
+	// 2. Usecase Layer[cite: 11]
 	financeCalc := usecase.NewFinanceCalculator()
-	txUsecase := usecase.NewTransactionUsecase(transactionRepo, walletRepo, financeRepo, financeCalc)
-	userUsecase := usecase.NewUserUsecase(userRepo, walletRepo) 
-	walletHandler := handlers.NewWalletHandler(userUsecase)
-	_ = financeRepo
-	_ = idemRepo
+	userUsecase := usecase.NewUserUsecase(userRepo, walletRepo)
+	kycUsecase := usecase.NewKYCUsecase(kycRepo)
+	vendorUsecase := usecase.NewVendorUsecase(vendorRepo)
 
-	// Handler Layer
-	txHandler := handlers.NewTransactionHandler(txUsecase)
+	// Pemecahan Usecase Transaksi Baru
+	goodsUsecase := usecase.NewTransactionGoodsUsecase(transactionRepo, walletRepo, financeRepo, financeCalc)
+	servicesUsecase := usecase.NewTransactionServicesUsecase(transactionRepo, walletRepo, financeRepo, financeCalc)
+	eventsUsecase := usecase.NewTransactionEventsUsecase(transactionRepo, walletRepo, financeRepo, financeCalc)
+
+	// 3. Handler Layer[cite: 11]
 	userHandler := handlers.NewUserHandler(userUsecase) 
+	walletHandler := handlers.NewWalletHandler(userUsecase)
+	kycHandler := handlers.NewKYCHandler(kycUsecase)
+	vendorHandler := handlers.NewVendorHandler(vendorUsecase)
+
+	// Pemecahan Handler Transaksi Baru
+	goodsHandler := handlers.NewTransactionGoodsHandler(goodsUsecase)
+	servicesHandler := handlers.NewTransactionServicesHandler(servicesUsecase)
+	eventsHandler := handlers.NewTransactionEventsHandler(eventsUsecase)
 
 	// ============================================================================
-	// 🤖 . MENYALAKAN BACKGROUND WORKER ROBOT PATROLI
+	// 🤖 MENYALAKAN BACKGROUND WORKER ROBOT PATROLI[cite: 11]
 	// ============================================================================
-	releaseWorker := worker.NewAutoReleaseWorker(transactionRepo, txUsecase)
+	releaseWorker := worker.NewAutoReleaseWorker(transactionRepo, goodsUsecase)
 	releaseWorker.Start(context.Background())
 
 	// ============================================================================
-	// 📡 . HTTP ROUTING ENGINE & MIDDLEWARE PROTECTION
+	// 📡 HTTP ROUTING ENGINE & MIDDLEWARE PROTECTION[cite: 11]
 	// ============================================================================
 	r := gin.Default()
 
-	// Pasang tameng CORS untuk membuka gerbang integrasi dengan Next.js
 	r.Use(handlers.CORSMiddleware())
 	r.Use(handlers.IdempotencyMiddleware(idemRepo))
 
 	r.GET("/", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{
 			"status":  "success",
-			"message": "Rekberkuy Engine is running smoothly with Full Security",
+			"message": "Rekberkuy Engine is running smoothly with Multi-Tenant Architecture",
 		})
 	})
 
 	api := r.Group("/api/v1")
 	{
-		// 🔓 JALUR PUBLIK & SISTEM
+		// 🔓 JALUR PUBLIK & SISTEM INTERNASIONAL[cite: 11]
 		api.POST("/users/register", userHandler.RegisterProfileHandler)
 		api.POST("/users/token-test", userHandler.GenerateTokenTestHandler)
-		api.POST("/webhooks/midtrans", txHandler.MidtransWebhookHandler)
+		
+		// Dokumen KYC & Registrasi Entitas Mitra
+		api.POST("/kyc/submit", handlers.AuthRoleMiddleware(domain.RoleUser), kycHandler.SubmitKYCHandler)
+		api.POST("/vendors/register", handlers.AuthRoleMiddleware(domain.RoleUser), vendorHandler.RegisterVendorHandler)
 
-		// 🛍️ KLASTER TRANSAKSI BARANG (GOODS)
-		goods := api.Group("/transactions/goods")
+		// 🛍️ KLASTER TRANSAKSI BARANG (GOODS GROUP)[cite: 11]
+		goodsGroup := api.Group("/transactions/goods")
 		{
-			goods.POST("", handlers.AuthRoleMiddleware(domain.RoleUser), txHandler.LockFundsAwalHandler)
-			goods.POST("/release", handlers.AuthRoleMiddleware(domain.RoleUser), txHandler.ReleaseFundsHandler)
+			goodsGroup.POST("/lock", handlers.AuthRoleMiddleware(domain.RoleUser), goodsHandler.LockFundsGoodsHandler)
+			goodsGroup.POST("/release", handlers.AuthRoleMiddleware(domain.RoleUser), goodsHandler.ReleaseGoodsHandler)
 		}
 
-		// 💼 KLASTER TRANSAKSI JASA (SERVICES - MILESTONE WORK)
-		services := api.Group("/transactions/services")
+		// 💼 KLASTER TRANSAKSI JASA (SERVICES GROUP)[cite: 11]
+		servicesGroup := api.Group("/transactions/services")
 		{
-			services.POST("", handlers.AuthRoleMiddleware(domain.RoleUser), txHandler.LockFundsAwalHandler)
-			services.POST("/release-milestone", handlers.AuthRoleMiddleware(domain.RoleUser), txHandler.ReleaseMilestoneHandler)
+			servicesGroup.POST("/lock", handlers.AuthRoleMiddleware(domain.RoleUser), servicesHandler.LockFundsServicesHandler)
+			servicesGroup.POST("/release-milestone", handlers.AuthRoleMiddleware(domain.RoleUser), servicesHandler.ReleaseMilestoneHandler)
 		}
 
-		// 🎪 KLASTER TRANSAKSI ACARA (EVENTS - MULTI VENDOR)
-		events := api.Group("/transactions/events")
+		// 🎪 KLASTER TRANSAKSI ACARA (EVENTS GROUP)[cite: 11]
+		eventsGroup := api.Group("/transactions/events")
 		{
-			events.POST("", handlers.AuthRoleMiddleware(domain.RoleUser), txHandler.LockFundsAwalHandler)
-			events.POST("/release-milestone", handlers.AuthRoleMiddleware(domain.RoleAdmin), txHandler.ReleaseEventMilestoneHandler)
-			events.POST("/release-vendors", handlers.AuthRoleMiddleware(domain.RoleEventOrganizer, domain.RoleAdmin), txHandler.ProcessEventVendorPayoutHandler)
+			eventsGroup.POST("/lock", handlers.AuthRoleMiddleware(domain.RoleUser), eventsHandler.LockFundsEventsHandler)
+			eventsGroup.POST("/release-milestone", handlers.AuthRoleMiddleware(domain.RoleAdmin), eventsHandler.ReleaseEventMilestoneHandler)
+			eventsGroup.POST("/release-vendors", handlers.AuthRoleMiddleware(domain.RoleEventOrganizer, domain.RoleAdmin), eventsHandler.ProcessEventVendorPayoutHandler)
 		}
 
+		// 💳 KLASTER GERBANG LOG PEMBAYARAN WALLET[cite: 11]
 		wallets := api.Group("/wallets")
 		{
-			// Hanya user terautentikasi yang bisa memicu top-up lewat gerbang tersembunyi
 			wallets.POST("/topup", handlers.AuthRoleMiddleware(domain.RoleUser), walletHandler.CreateTopUpHandler)
 		}
 	}
