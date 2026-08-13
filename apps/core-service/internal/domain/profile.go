@@ -16,13 +16,15 @@ const (
 )
 
 type UserProfile struct {
-	ID          string    `gorm:"type:uuid;primaryKey;not null" json:"id"`
-	Username    string    `gorm:"type:varchar(255);not null;unique" json:"username"`
-	FullName    string    `gorm:"type:varchar(255);not null" json:"full_name"`
-	Role        UserRole  `gorm:"type:varchar(50);not null;default:'USER'" json:"role"`
-	PhoneNumber *string   `gorm:"type:varchar(50)" json:"phone_number,omitempty"`
-	CreatedAt   time.Time `gorm:"default:now()" json:"created_at"`
-	UpdatedAt   time.Time `gorm:"default:now()" json:"updated_at"`
+	ID           string    `gorm:"type:uuid;primaryKey;not null" json:"id"`
+	Username     string    `gorm:"type:varchar(255);not null;unique" json:"username"`
+	Email        string    `gorm:"type:varchar(255);not null;unique" json:"email"`
+	PasswordHash string    `gorm:"type:varchar(255);not null" json:"-"`
+	FullName     string    `gorm:"type:varchar(255);not null" json:"full_name"`
+	Role         UserRole  `gorm:"type:varchar(50);not null;default:'USER'" json:"role"`
+	PhoneNumber  *string   `gorm:"type:varchar(50)" json:"phone_number,omitempty"`
+	CreatedAt    time.Time `gorm:"default:now()" json:"created_at"`
+	UpdatedAt    time.Time `gorm:"default:now()" json:"updated_at"`
 }
 
 type CRMLoyalty struct {
@@ -81,6 +83,7 @@ type VendorProfile struct {
 type UserRepository interface {
 	CreateProfile(ctx context.Context, user *UserProfile) error
 	GetProfileByID(ctx context.Context, id string) (*UserProfile, error)
+	GetProfileByEmail(ctx context.Context, email string) (*UserProfile, error)
 }
 
 type KYCRepository interface {

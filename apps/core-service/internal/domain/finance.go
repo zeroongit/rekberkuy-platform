@@ -7,9 +7,9 @@ import (
 
 type PlatformFinance struct {
 	ID                 string    `json:"id"`
-	TotalEscrowBalance int64     `json:"total_escrow_balance"` // Uang pembeli yang sedang dikunci
-	TotalRevenue       int64     `json:"total_revenue"`        // Pendapatan bersih dari service fee
-	TotalMidtransFees  int64     `json:"total_midtrans_fees"`   // Total biaya yang dibayarkan ke Midtrans
+	TotalEscrowBalance int64     `json:"total_escrow_balance"` // Buyer funds currently locked
+	TotalRevenue       int64     `json:"total_revenue"`        // Net revenue from service fee
+	TotalMidtransFees  int64     `json:"total_midtrans_fees"`  // Total fees paid to Midtrans
 	UpdatedAt          time.Time `json:"updated_at"`
 }
 

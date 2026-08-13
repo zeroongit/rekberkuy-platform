@@ -26,7 +26,7 @@ func (r *vendorRepository) CreateVendor(ctx context.Context, vendor *domain.Vend
 	`
 	_, err := r.db.ExecContext(ctx, query, vendor.VendorID, vendor.BusinessName, vendor.Category, vendor.IsVerified)
 	if err != nil {
-		return fmt.Errorf("gagal mencatat data profil vendor ke database: %w", err)
+		return fmt.Errorf("failed to record vendor profile data to database: %w", err)
 	}
 	return nil
 }

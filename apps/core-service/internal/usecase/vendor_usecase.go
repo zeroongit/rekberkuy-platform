@@ -15,12 +15,12 @@ func NewVendorUsecase(vr domain.VendorRepository) *VendorUsecase {
 }
 
 func (u *VendorUsecase) RegisterVendorProfile(ctx context.Context, vendor *domain.VendorProfile) error {
-	// 👈 KALIBRASI: Gunakan BusinessName dan Category sesuai file domain vendor.go asli Anda
+	// 👈 CALIBRATION: Use BusinessName and Category per your actual domain vendor.go file
 	if vendor.BusinessName == "" || vendor.Category == "" {
-		return fmt.Errorf("nama bisnis vendor dan kategori wajib diisi")
+		return fmt.Errorf("vendor business name and category are required")
 	}
-	
-	vendor.IsVerified = false // Tetap kunci false sebelum diverifikasi admin resmi
-	
+
+	vendor.IsVerified = false // Keep locked false until officially verified by admin
+
 	return u.vendorRepo.CreateVendor(ctx, vendor)
 }

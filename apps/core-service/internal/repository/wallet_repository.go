@@ -13,29 +13,12 @@ type walletRepository struct {
 	tx *sql.Tx
 }
 
-// NewWalletRepository menginisialisasi adapter database untuk RekberPay Wallet
+// NewWalletRepository initializes the database adapter for the RekberPay Wallet
 func NewWalletRepository(db *sql.DB) domain.WalletRepository {
 	return &walletRepository{db: db}
 }
 
-// ExecuteInTransaction menjalankan blok fungsi di dalam satu database transaction (ACID)
-func (r *walletRepository) ExecuteInTransaction(ctx context.Context, fn func(domain.WalletRepository) error) error {
-	tx, err := r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
-	if err != nil {
-		return fmt.Errorf("gagal memulai transaksi database: %w", err)
-	}
-
-	txRepo := &walletRepository{db: r.db, tx: tx}
-
-	if err := fn(txRepo); err != nil {
-		_ = tx.Rollback()
-		return err
-	}
-
-	return tx.Commit()
-}
-
-// GetBalance mengambil data saldo dan status kebekuan dompet user dari Supabase
+// GetBalance fetches the balance and frozen status of a user's wallet from Supabase
 func (r *walletRepository) GetBalance(ctx context.Context, userID string) (*domain.RekberPayWallet, error) {
 	query := `
 		SELECT user_id, balance, is_frozen, updated_at 
@@ -58,7 +41,7 @@ func (r *walletRepository) GetBalance(ctx context.Context, userID string) (*doma
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("wallet tidak ditemukan untuk user id: %s", userID)
+			return nil, fmt.Errorf("wallet not found for user id: %s", userID)
 		}
 		return nil, err
 	}
@@ -66,7 +49,7 @@ func (r *walletRepository) GetBalance(ctx context.Context, userID string) (*doma
 	return &wallet, nil
 }
 
-// CreateWallet membuat dompet RekberPay baru saat user selesai registrasi
+// CreateWallet creates a new RekberPay wallet when a user completes registration
 func (r *walletRepository) CreateWallet(ctx context.Context, userID string) error {
 	query := `
 		INSERT INTO rekberpay_wallets (user_id, balance, is_frozen, updated_at)
@@ -82,13 +65,13 @@ func (r *walletRepository) CreateWallet(ctx context.Context, userID string) erro
 	}
 
 	if err != nil {
-		return fmt.Errorf("gagal membuat wallet baru: %w", err)
+		return fmt.Errorf("failed to create new wallet: %w", err)
 	}
 
 	return nil
 }
 
-// UpdateBalanceTx mengeksekusi mutasi saldo secara aman dengan perlindungan Race Condition
+// UpdateBalanceTx executes balance mutations safely with race-condition protection
 func (r *walletRepository) UpdateBalanceTx(ctx context.Context, txRecord *domain.RekberPayTransaction, amountModifier int64) error {
 	var tx *sql.Tx
 	var err error
@@ -99,7 +82,7 @@ func (r *walletRepository) UpdateBalanceTx(ctx context.Context, txRecord *domain
 	} else {
 		tx, err = r.db.BeginTx(ctx, &sql.TxOptions{Isolation: sql.LevelSerializable})
 		if err != nil {
-			return fmt.Errorf("gagal memulai transaksi database: %w", err)
+			return fmt.Errorf("failed to begin database transaction: %w", err)
 		}
 	}
 
@@ -109,7 +92,7 @@ func (r *walletRepository) UpdateBalanceTx(ctx context.Context, txRecord *domain
 		}
 	}()
 
-	// 1. Kunci baris wallet user (SELECT FOR UPDATE)
+	// 1. Lock the user's wallet row (SELECT FOR UPDATE)
 	var currentBalance int64
 	var isFrozen bool
 	lockQuery := `
@@ -117,34 +100,34 @@ func (r *walletRepository) UpdateBalanceTx(ctx context.Context, txRecord *domain
 	`
 	err = tx.QueryRowContext(ctx, lockQuery, txRecord.WalletID).Scan(&currentBalance, &isFrozen)
 	if err != nil {
-		return fmt.Errorf("gagal mengunci data wallet untuk mutasi: %w", err)
+		return fmt.Errorf("failed to lock wallet data for mutation: %w", err)
 	}
 
 	if isFrozen {
-		return fmt.Errorf("transaksi ditolak: wallet user %s sedang dibekukan", txRecord.WalletID)
+		return fmt.Errorf("transaction rejected: wallet for user %s is currently frozen", txRecord.WalletID)
 	}
 
-	// 2. Kalkulasi jatah potongan saldo beserta biaya withdraw flat Rp7.500
+	// 2. Calculate the balance deduction portion along with the flat Rp7.500 withdrawal fee
 	totalDeduction := amountModifier
 	if amountModifier < 0 {
 		if txRecord.Type == domain.TxWithdraw {
 			totalDeduction = amountModifier - txRecord.AdminFee
 		}
 		if (currentBalance + totalDeduction) < 0 {
-			return errors.New("transaksi ditolak: saldo RekberPay tidak mencukupi untuk nominal transaksi beserta biaya admin")
+			return errors.New("transaction rejected: RekberPay balance is not sufficient for the transaction amount plus admin fee")
 		}
 	}
 
-	// 3. Update tabel saldo master
+	// 3. Update the master balance table
 	updateWalletQuery := `
 		UPDATE rekberpay_wallets SET balance = balance + $1, updated_at = NOW() WHERE user_id = $2
 	`
 	_, err = tx.ExecContext(ctx, updateWalletQuery, totalDeduction, txRecord.WalletID)
 	if err != nil {
-		return fmt.Errorf("gagal memperbarui saldo wallet: %w", err)
+		return fmt.Errorf("failed to update wallet balance: %w", err)
 	}
 
-	// 4. Catat riwayat mutasi finansial ke tabel rekberpay_transactions
+	// 4. Record the financial mutation history into the rekberpay_transactions table
 	insertLogQuery := `
 		INSERT INTO rekberpay_transactions (
 			id, wallet_id, type, status, amount, admin_fee, 
@@ -158,19 +141,19 @@ func (r *walletRepository) UpdateBalanceTx(ctx context.Context, txRecord *domain
 		txRecord.ReferenceTransactionID, txRecord.MidtransTopUpID, txRecord.Description,
 	)
 	if err != nil {
-		return fmt.Errorf("gagal mencatat histori mutasi transaksi: %w", err)
+		return fmt.Errorf("failed to record transaction mutation history: %w", err)
 	}
 
 	if !isNestedTx {
 		if err := tx.Commit(); err != nil {
-			return fmt.Errorf("gagal melakukan commit transaksi keuangan: %w", err)
+			return fmt.Errorf("failed to commit financial transaction: %w", err)
 		}
 	}
 
 	return nil
 }
 
-// GetAllUsers ForCRMEvaluation mengambil seluruh data profil pengguna
+// GetAllUsers ForCRMEvaluation fetches all user profile data
 func (r *walletRepository) GetAllUsersForCRMEvaluation(ctx context.Context) ([]*domain.UserProfile, error) {
 	query := `
 		SELECT id, username, full_name, role, phone_number, created_at, updated_at FROM user_profiles
@@ -185,7 +168,7 @@ func (r *walletRepository) GetAllUsersForCRMEvaluation(ctx context.Context) ([]*
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("gagal mengambil data profil evaluasi CRM: %w", err)
+		return nil, fmt.Errorf("failed to fetch CRM evaluation profile data: %w", err)
 	}
 	defer rows.Close()
 
@@ -196,7 +179,7 @@ func (r *walletRepository) GetAllUsersForCRMEvaluation(ctx context.Context) ([]*
 			&user.ID, &user.Username, &user.FullName, &user.Role, &user.PhoneNumber, &user.CreatedAt, &user.UpdatedAt,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("gagal scan data user: %w", err)
+			return nil, fmt.Errorf("failed to scan user data: %w", err)
 		}
 		users = append(users, &user)
 	}
@@ -204,7 +187,7 @@ func (r *walletRepository) GetAllUsersForCRMEvaluation(ctx context.Context) ([]*
 	return users, nil
 }
 
-// GetCRMLoyaltyByUserID mengambil jatah profile loyalitas kasta user
+// GetCRMLoyaltyByUserID fetches the user's loyalty tier profile
 func (r *walletRepository) GetCRMLoyaltyByUserID(ctx context.Context, userID string) (*domain.CRMLoyalty, error) {
 	query := `
 		SELECT user_id, total_points, current_tier, total_spent_fiat, rolling_3_month_gmv, 
@@ -234,7 +217,7 @@ func (r *walletRepository) GetCRMLoyaltyByUserID(ctx context.Context, userID str
 
 	if err != nil {
 		if errors.Is(err, sql.ErrNoRows) {
-			return nil, fmt.Errorf("crm profile tidak ditemukan untuk user id: %s", userID)
+			return nil, fmt.Errorf("crm profile not found for user id: %s", userID)
 		}
 		return nil, err
 	}
@@ -242,7 +225,7 @@ func (r *walletRepository) GetCRMLoyaltyByUserID(ctx context.Context, userID str
 	return &crm, nil
 }
 
-// UpdateCRMLoyalty menyimpan pembaruan kasta terbaru hasil evaluasi bulanan
+// UpdateCRMLoyalty stores the updated tier resulting from the monthly evaluation
 func (r *walletRepository) UpdateCRMLoyalty(ctx context.Context, crmProfile *domain.CRMLoyalty) error {
 	query := `
 		UPDATE crm_loyalty 
@@ -257,13 +240,13 @@ func (r *walletRepository) UpdateCRMLoyalty(ctx context.Context, crmProfile *dom
 	}
 
 	if err != nil {
-		return fmt.Errorf("gagal memperbarui data crm kasta user: %w", err)
+		return fmt.Errorf("failed to update user crm tier data: %w", err)
 	}
 
 	return nil
 }
 
-// GetVendorAllocationsByTxID mengambil daftar komitmen alokasi dana vendor dengan tipe slice pointer []*domain.EventVendorAllocation
+// GetVendorAllocationsByTxID fetches the list of vendor fund-allocation commitments as a pointer slice []*domain.EventVendorAllocation
 func (r *walletRepository) GetVendorAllocationsByTxID(ctx context.Context, transactionID string) ([]*domain.EventVendorAllocation, error) {
 	query := `
 		SELECT id, transaction_id, vendor_id, allocated_amount, actual_paid_amount, status, created_at
@@ -280,11 +263,11 @@ func (r *walletRepository) GetVendorAllocationsByTxID(ctx context.Context, trans
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("gagal kueri alokasi vendor: %w", err)
+		return nil, fmt.Errorf("failed to query vendor allocations: %w", err)
 	}
 	defer rows.Close()
 
-	var allocations []*domain.EventVendorAllocation 
+	var allocations []*domain.EventVendorAllocation
 	for rows.Next() {
 		var alloc domain.EventVendorAllocation
 		err := rows.Scan(
@@ -297,9 +280,9 @@ func (r *walletRepository) GetVendorAllocationsByTxID(ctx context.Context, trans
 			&alloc.CreatedAt,
 		)
 		if err != nil {
-			return nil, fmt.Errorf("gagal scan baris alokasi vendor: %w", err)
+			return nil, fmt.Errorf("failed to scan vendor allocation row: %w", err)
 		}
-		allocations = append(allocations, &alloc) // 👈 Ambil pointernya (&alloc)
+		allocations = append(allocations, &alloc) // 👈 Take its pointer (&alloc)
 	}
 
 	if err = rows.Err(); err != nil {
@@ -308,41 +291,42 @@ func (r *walletRepository) GetVendorAllocationsByTxID(ctx context.Context, trans
 
 	return allocations, nil
 }
-// CreateVendorPayoutRecord mencatat invoice klaim pembayaran resmi sub-vendor ke database
+
+// CreateVendorPayoutRecord records the official sub-vendor payment claim invoice to the database
 func (r *walletRepository) CreateVendorPayoutRecord(ctx context.Context, payout *domain.EventVendorPayout) error {
 	query := `
 		INSERT INTO event_vendor_payouts (
-			id, transaction_id, vendor_name, vendor_bank_name, vendor_account_number,
+			id, transaction_id, vendor_user_id, vendor_name, vendor_bank_name, vendor_account_number,
 			amount_requested, expense_description, invoice_file_url, payout_phase, status,
 			is_disbursed_by_midtrans, created_at
-		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+		) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, NOW())
 	`
 	var err error
 	if r.tx != nil {
 		_, err = r.tx.ExecContext(ctx, query,
-			payout.ID, payout.TransactionID, payout.VendorName, payout.VendorBankName, payout.VendorAccountNumber,
+			payout.ID, payout.TransactionID, payout.VendorUserID, payout.VendorName, payout.VendorBankName, payout.VendorAccountNumber,
 			payout.AmountRequested, payout.ExpenseDescription, payout.InvoiceFileURL, payout.PayoutPhase, payout.Status,
 			payout.IsDisbursedByMidtrans,
 		)
 	} else {
 		_, err = r.db.ExecContext(ctx, query,
-			payout.ID, payout.TransactionID, payout.VendorName, payout.VendorBankName, payout.VendorAccountNumber,
+			payout.ID, payout.TransactionID, payout.VendorUserID, payout.VendorName, payout.VendorBankName, payout.VendorAccountNumber,
 			payout.AmountRequested, payout.ExpenseDescription, payout.InvoiceFileURL, payout.PayoutPhase, payout.Status,
 			payout.IsDisbursedByMidtrans,
 		)
 	}
 
 	if err != nil {
-		return fmt.Errorf("gagal menyimpan data klaim payout vendor: %w", err)
+		return fmt.Errorf("failed to save vendor payout claim data: %w", err)
 	}
 	return nil
 }
 
-// GetVendorPayoutByID mengambil data detail pengajuan invoice termin event berdasarkan Payout ID
+// GetVendorPayoutByID fetches the event installment invoice request detail by Payout ID
 func (r *walletRepository) GetVendorPayoutByID(ctx context.Context, payoutID string) (*domain.EventVendorPayout, error) {
 	query := `
-		SELECT 
-			id, transaction_id, vendor_name, vendor_bank_name, vendor_account_number,
+		SELECT
+			id, transaction_id, vendor_user_id, vendor_name, vendor_bank_name, vendor_account_number,
 			amount_requested, expense_description, invoice_file_url, payout_phase, status,
 			is_disbursed_by_midtrans, created_at
 		FROM event_vendor_payouts
@@ -353,25 +337,25 @@ func (r *walletRepository) GetVendorPayoutByID(ctx context.Context, payoutID str
 
 	if r.tx != nil {
 		err = r.tx.QueryRowContext(ctx, query, payoutID).Scan(
-			&payout.ID, &payout.TransactionID, &payout.VendorName, &payout.VendorBankName, &payout.VendorAccountNumber,
+			&payout.ID, &payout.TransactionID, &payout.VendorUserID, &payout.VendorName, &payout.VendorBankName, &payout.VendorAccountNumber,
 			&payout.AmountRequested, &payout.ExpenseDescription, &payout.InvoiceFileURL, &payout.PayoutPhase, &payout.Status,
 			&payout.IsDisbursedByMidtrans, &payout.CreatedAt,
 		)
 	} else {
 		err = r.db.QueryRowContext(ctx, query, payoutID).Scan(
-			&payout.ID, &payout.TransactionID, &payout.VendorName, &payout.VendorBankName, &payout.VendorAccountNumber,
+			&payout.ID, &payout.TransactionID, &payout.VendorUserID, &payout.VendorName, &payout.VendorBankName, &payout.VendorAccountNumber,
 			&payout.AmountRequested, &payout.ExpenseDescription, &payout.InvoiceFileURL, &payout.PayoutPhase, &payout.Status,
 			&payout.IsDisbursedByMidtrans, &payout.CreatedAt,
 		)
 	}
 
 	if err != nil {
-		return nil, fmt.Errorf("gagal mengambil data pengajuan payout vendor: %w", err)
+		return nil, fmt.Errorf("failed to fetch vendor payout request data: %w", err)
 	}
 	return &payout, nil
 }
 
-// UpdateVendorPayoutStatus memperbarui status persetujuan invoice di dalam lingkup ACID
+// UpdateVendorPayoutStatus updates the invoice approval status within an ACID scope
 func (r *walletRepository) UpdateVendorPayoutStatus(ctx context.Context, payoutID string, status string) error {
 	query := `
 		UPDATE event_vendor_payouts
@@ -386,7 +370,54 @@ func (r *walletRepository) UpdateVendorPayoutStatus(ctx context.Context, payoutI
 	}
 
 	if err != nil {
-		return fmt.Errorf("gagal memperbarui status pengajuan payout vendor: %w", err)
+		return fmt.Errorf("failed to update vendor payout request status: %w", err)
+	}
+	return nil
+}
+
+// GetWalletTxByMidtransOrderID fetches the top-up draft transaction by its Midtrans order id.
+func (r *walletRepository) GetWalletTxByMidtransOrderID(ctx context.Context, orderID string) (*domain.RekberPayTransaction, error) {
+	query := `
+		SELECT id, wallet_id, type, status, amount, admin_fee, platform_net_profit,
+		       reference_transaction_id, midtrans_topup_id, description, created_at
+		FROM rekberpay_transactions
+		WHERE midtrans_topup_id = $1
+	`
+	// Lock the row inside a transaction so concurrent webhook retries cannot both
+	// read PENDING and double-credit the wallet (anti double-spending).
+	if r.tx != nil {
+		query += " FOR UPDATE"
+	}
+	var t domain.RekberPayTransaction
+	var err error
+	if r.tx != nil {
+		err = r.tx.QueryRowContext(ctx, query, orderID).Scan(
+			&t.ID, &t.WalletID, &t.Type, &t.Status, &t.Amount, &t.AdminFee, &t.PlatformNetProfit,
+			&t.ReferenceTransactionID, &t.MidtransTopUpID, &t.Description, &t.CreatedAt,
+		)
+	} else {
+		err = r.db.QueryRowContext(ctx, query, orderID).Scan(
+			&t.ID, &t.WalletID, &t.Type, &t.Status, &t.Amount, &t.AdminFee, &t.PlatformNetProfit,
+			&t.ReferenceTransactionID, &t.MidtransTopUpID, &t.Description, &t.CreatedAt,
+		)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("top-up draft with order id %s not found: %w", orderID, err)
+	}
+	return &t, nil
+}
+
+// MarkWalletTxStatusByOrderID updates the status of the top-up transaction row.
+func (r *walletRepository) MarkWalletTxStatusByOrderID(ctx context.Context, orderID string, status domain.WalletTxStatus) error {
+	query := `UPDATE rekberpay_transactions SET status = $1 WHERE midtrans_topup_id = $2`
+	var err error
+	if r.tx != nil {
+		_, err = r.tx.ExecContext(ctx, query, status, orderID)
+	} else {
+		_, err = r.db.ExecContext(ctx, query, status, orderID)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to update top-up status: %w", err)
 	}
 	return nil
 }

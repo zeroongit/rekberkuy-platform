@@ -9,14 +9,15 @@ import (
 
 type financeRepository struct {
 	db *sql.DB
+	tx *sql.Tx
 }
 
-// NewFinanceRepository menginisialisasi adapter database untuk keuangan platform
+// NewFinanceRepository initializes the database adapter for platform finance
 func NewFinanceRepository(db *sql.DB) *financeRepository {
 	return &financeRepository{db: db}
 }
 
-// GetPlatformFinance mengambil rangkuman kas global platform RekberKuy
+// GetPlatformFinance fetches the global cash summary of the RekberKuy platform
 func (r *financeRepository) GetPlatformFinance(ctx context.Context) (*domain.PlatformFinance, error) {
 	query := `
 		SELECT id, total_escrow_balance, total_revenue, total_midtrans_fees, updated_at
@@ -24,24 +25,23 @@ func (r *financeRepository) GetPlatformFinance(ctx context.Context) (*domain.Pla
 		LIMIT 1
 	`
 	var f domain.PlatformFinance
-	err := r.db.QueryRowContext(ctx, query).Scan(
-		&f.ID,
-		&f.TotalEscrowBalance,
-		&f.TotalRevenue,
-		&f.TotalMidtransFees,
-		&f.UpdatedAt,
-	)
+	var err error
+	if r.tx != nil {
+		err = r.tx.QueryRowContext(ctx, query).Scan(&f.ID, &f.TotalEscrowBalance, &f.TotalRevenue, &f.TotalMidtransFees, &f.UpdatedAt)
+	} else {
+		err = r.db.QueryRowContext(ctx, query).Scan(&f.ID, &f.TotalEscrowBalance, &f.TotalRevenue, &f.TotalMidtransFees, &f.UpdatedAt)
+	}
 	if err != nil {
 		if err == sql.ErrNoRows {
-			// Jika kosong, return objek default dengan saldo 0
+			// If empty, return a default object with zero balance
 			return &domain.PlatformFinance{}, nil
 		}
-		return nil, fmt.Errorf("gagal mengambil data kas global platform: %w", err)
+		return nil, fmt.Errorf("failed to fetch platform global cash data: %w", err)
 	}
 	return &f, nil
 }
 
-// UpdatePlatformFinance memperbarui kas global secara atomik menggunakan delta (penambahan/pengurangan)
+// UpdatePlatformFinance updates the global cash atomically using deltas (additions/subtractions)
 func (r *financeRepository) UpdatePlatformFinance(ctx context.Context, escrowDelta int64, revenueDelta int64, midtransFeeDelta int64) error {
 	query := `
 		INSERT INTO platform_finances (id, total_escrow_balance, total_revenue, total_midtrans_fees, updated_at)
@@ -52,9 +52,14 @@ func (r *financeRepository) UpdatePlatformFinance(ctx context.Context, escrowDel
 			total_midtrans_fees = platform_finances.total_midtrans_fees + EXCLUDED.total_midtrans_fees,
 			updated_at = NOW()
 	`
-	_, err := r.db.ExecContext(ctx, query, escrowDelta, revenueDelta, midtransFeeDelta)
+	var err error
+	if r.tx != nil {
+		_, err = r.tx.ExecContext(ctx, query, escrowDelta, revenueDelta, midtransFeeDelta)
+	} else {
+		_, err = r.db.ExecContext(ctx, query, escrowDelta, revenueDelta, midtransFeeDelta)
+	}
 	if err != nil {
-		return fmt.Errorf("gagal memperbarui mutasi kas global platform: %w", err)
+		return fmt.Errorf("failed to update platform global cash mutations: %w", err)
 	}
 	return nil
 }

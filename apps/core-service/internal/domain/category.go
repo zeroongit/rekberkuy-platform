@@ -3,7 +3,7 @@ package domain
 import "time"
 
 // ============================================================================
-// 🛍️ KATEGORI BARANG (GOODS)
+// 🛍️ GOODS CATEGORY
 // ============================================================================
 
 type GoodsCategory struct {
@@ -32,7 +32,7 @@ type GoodsSubSubCategory struct {
 }
 
 // ============================================================================
-// 💼 KATEGORI JASA (SERVICES)
+// 💼 SERVICES CATEGORY
 // ============================================================================
 
 type ServiceCategory struct {
@@ -61,7 +61,7 @@ type ServiceSubSubCategory struct {
 }
 
 // ============================================================================
-// 🎪 KATEGORI ACARA (EVENTS)
+// 🎪 EVENTS CATEGORY
 // ============================================================================
 
 type EventCategory struct {
@@ -90,13 +90,13 @@ type EventSubSubCategory struct {
 }
 
 // ============================================================================
-// 🏢 KATEGORI MITRA BISNIS (VENDORS)
+// 🏢 VENDOR (BUSINESS PARTNER) CATEGORY
 // ============================================================================
 
 type VendorCategoryModel struct {
 	ID        uint      `gorm:"primaryKey;autoIncrement" json:"id"`
-	Name      string    `gorm:"type:varchar(100);not null;unique" json:"name"` // cth: "VENDOR"
-	Slug      string    `gorm:"type:varchar(100);not null;unique" json:"slug"` // cth: "vendor"
+	Name      string    `gorm:"type:varchar(100);not null;unique" json:"name"` // e.g. "VENDOR"
+	Slug      string    `gorm:"type:varchar(100);not null;unique" json:"slug"` // e.g. "vendor"
 	CreatedAt time.Time `gorm:"default:now()" json:"created_at"`
 }
 
@@ -104,7 +104,7 @@ type VendorSubCategory struct {
 	ID         uint                `gorm:"primaryKey;autoIncrement" json:"id"`
 	CategoryID uint                `gorm:"not null" json:"category_id"`
 	Category   VendorCategoryModel `gorm:"foreignKey:CategoryID;constraint:OnDelete:CASCADE" json:"-"`
-	Name       string              `gorm:"type:varchar(100);not null" json:"name"` // cth: "SOUND_SYSTEM", "KATERING"
+	Name       string              `gorm:"type:varchar(100);not null" json:"name"` // e.g. "SOUND_SYSTEM", "KATERING"
 	Slug       string              `gorm:"type:varchar(100);not null;unique" json:"slug"`
 	CreatedAt  time.Time           `gorm:"default:now()" json:"created_at"`
 }
@@ -113,7 +113,7 @@ type VendorSubSubCategory struct {
 	ID            uint              `gorm:"primaryKey;autoIncrement" json:"id"`
 	SubCategoryID uint              `gorm:"not null" json:"sub_category_id"`
 	SubCategory   VendorSubCategory `gorm:"foreignKey:SubCategoryID;constraint:OnDelete:CASCADE" json:"-"`
-	Name          string            `gorm:"type:varchar(100);not null" json:"name"` // cth: "Line Array System"
+	Name          string            `gorm:"type:varchar(100);not null" json:"name"` // e.g. "Line Array System"
 	Slug          string            `gorm:"type:varchar(100);not null;unique" json:"slug"`
 	CreatedAt     time.Time         `gorm:"default:now()" json:"created_at"`
 }

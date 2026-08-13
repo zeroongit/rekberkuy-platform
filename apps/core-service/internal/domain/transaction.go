@@ -5,13 +5,12 @@ import (
 	"time"
 )
 
-
 const (
-	MaxMemberEventLimit  = 10000000 
-	QRISTotalFeePercent  = 0.01     
-	WithdrawFeeToUser    = 7500     
-	FeeGoodsRekberPay    = 2500 
-	FeeGoodsNonRekberPay = 5000 
+	MaxMemberEventLimit  = 10000000
+	QRISTotalFeePercent  = 0.01
+	WithdrawFeeToUser    = 7500
+	FeeGoodsRekberPay    = 2500
+	FeeGoodsNonRekberPay = 5000
 )
 
 type RekberType string
@@ -27,6 +26,14 @@ const (
 	StatusDisputed       TransactionStatus = "DISPUTED"
 	StatusReleased       TransactionStatus = "RELEASED"
 	StatusRefunded       TransactionStatus = "REFUNDED"
+)
+
+// Status for EventVendorPayout (event vendor invoice).
+const (
+	VendorPayoutPending             = "PENDING"              // Awaiting review/disbursement
+	VendorPayoutApproved            = "APPROVED"             // Disbursed (internal wallet credit)
+	VendorPayoutPendingDisbursement = "PENDING_DISBURSEMENT" // External vendor, awaiting bank disbursement
+	VendorPayoutDisbursed           = "DISBURSED"            // External vendor paid out-of-band; terminal
 )
 
 type Transaction struct {
@@ -55,8 +62,8 @@ type Transaction struct {
 type TransactionGoods struct {
 	TransactionID          string              `gorm:"type:uuid;primaryKey;not null" json:"transaction_id"`
 	Transaction            Transaction         `gorm:"foreignKey:TransactionID;constraint:OnDelete:CASCADE"`
-	SubSubCategoryID      uint64              `gorm:"not null" json:"sub_sub_category_id"`
-	SubSubCategory        GoodsSubSubCategory `gorm:"foreignKey:SubSubCategoryID" json:"-"`
+	SubSubCategoryID       uint64              `gorm:"not null" json:"sub_sub_category_id"`
+	SubSubCategory         GoodsSubSubCategory `gorm:"foreignKey:SubSubCategoryID" json:"-"`
 	ShippingCourier        string              `gorm:"type:varchar(100);not null" json:"shipping_courier"`
 	ShippingTrackingNumber *string             `gorm:"type:varchar(255)" json:"shipping_tracking_number,omitempty"`
 	ShippingAddress        string              `gorm:"type:text;not null" json:"shipping_address"`
@@ -99,6 +106,7 @@ type EventVendorPayout struct {
 	ID                    string            `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	TransactionID         string            `gorm:"type:uuid;not null;index" json:"transaction_id"`
 	EventTx               TransactionEvents `gorm:"foreignKey:TransactionID;constraint:OnDelete:CASCADE"`
+	VendorUserID          *string           `gorm:"type:uuid" json:"vendor_user_id,omitempty"` // internal vendor (platform user) -> internal wallet credit; nil = external vendor -> Midtrans disbursement
 	VendorName            string            `gorm:"type:varchar(255);not null" json:"vendor_name"`
 	VendorBankName        string            `gorm:"type:varchar(100);not null" json:"vendor_bank_name"`
 	VendorAccountNumber   string            `gorm:"type:varchar(100);not null" json:"vendor_account_number"`
@@ -108,6 +116,7 @@ type EventVendorPayout struct {
 	PayoutPhase           string            `gorm:"type:varchar(100);not null;default:'FINAL_SETTLEMENT'" json:"payout_phase"`
 	Status                string            `gorm:"type:varchar(50);not null;default:'PENDING'" json:"status"`
 	IsDisbursedByMidtrans bool              `gorm:"type:boolean;not null;default:false" json:"is_disbursed_by_midtrans"`
+	DisbursedAt           *time.Time        `json:"disbursed_at,omitempty"`
 	ReviewedBy            *string           `gorm:"type:uuid" json:"reviewed_by,omitempty"`
 	Reviewer              *UserProfile      `gorm:"foreignKey:ReviewedBy"`
 	ReviewedAt            *time.Time        `json:"reviewed_at,omitempty"`
@@ -138,11 +147,21 @@ type EventOfficialDetails struct {
 type TransactionRepository interface {
 	CreateTransaction(ctx context.Context, tx *Transaction) error
 	GetTransactionByID(ctx context.Context, id string) (*Transaction, error)
+	GetTransactionByMidtransOrderID(ctx context.Context, orderID string) (*Transaction, error)
 	UpdateTransactionStatus(ctx context.Context, id string, status TransactionStatus) error
 	GetExpiredLockedTransactions(ctx context.Context) ([]string, error)
 
 	GetMilestoneByID(ctx context.Context, id string) (*ServiceMilestone, error)
 	UpdateMilestoneStatus(ctx context.Context, id string, status string) error
 	GetEventVendorPayoutsByTxID(ctx context.Context, txID string) ([]EventVendorPayout, error)
+	GetEventVendorPayoutByID(ctx context.Context, payoutID string) (*EventVendorPayout, error)
 	UpdateEventVendorPayoutStatus(ctx context.Context, id string, status string) error
+	// MarkEventVendorPayoutDisbursed records that an external vendor's bank payout
+	// was completed out-of-band. Sets DISBURSED + the disbursing admin + timestamps.
+	// Does not move money in-system (see ADR-0002).
+	MarkEventVendorPayoutDisbursed(ctx context.Context, payoutID string, adminID string) error
+
+	// UpdateBlockchainLog stores the on-chain audit-log hash & timestamp after
+	// the relayer successfully records the transaction to Avalanche.
+	UpdateBlockchainLog(ctx context.Context, txID string, txHash string) error
 }

@@ -3,7 +3,6 @@ package handlers
 import (
 	"fmt"
 	"net/http"
-	"os"
 	"strings"
 
 	"rekberkuy/core-service/internal/domain"
@@ -12,56 +11,61 @@ import (
 	"github.com/golang-jwt/jwt/v5"
 )
 
-// AuthRoleMiddleware bertindak sebagai gerbang pengaman (RBAC) di layer HTTP.
-// Middleware ini memotong request, memvalidasi token JWT asli, dan memeriksa wewenang role.
-func AuthRoleMiddleware(allowedRoles ...domain.UserRole) gin.HandlerFunc {
+// AuthMiddleware acts as a security gate (RBAC) at the HTTP layer.
+// The JWT secret is injected via the constructor so it does not read os.Getenv on
+// every request and is easy to test.
+type AuthMiddleware struct {
+	jwtSecret string
+}
+
+// NewAuthMiddleware receives the JWT secret already validated by config.
+func NewAuthMiddleware(jwtSecret string) *AuthMiddleware {
+	return &AuthMiddleware{jwtSecret: jwtSecret}
+}
+
+// RequireRole validates the real JWT token and checks role authorization.
+func (a *AuthMiddleware) RequireRole(allowedRoles ...domain.UserRole) gin.HandlerFunc {
 	return func(c *gin.Context) {
-		// 1. Ambil header Authorization
+		// 1. Get the Authorization header
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Akses ditolak: Header Authorization tidak ditemukan"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Access denied: Authorization header not found"})
 			c.Abort()
 			return
 		}
 
-		// 2. Ekstrak token dari format "Bearer <token>"
+		// 2. Extract the token from the "Bearer <token>" format
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		if tokenString == authHeader {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Akses ditolak: Format token harus 'Bearer <token>'"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Access denied: Token format must be 'Bearer <token>'"})
 			c.Abort()
 			return
 		}
 
-		// 3. Ambil JWT Secret dari environment
-		jwtSecret := os.Getenv("JWT_SECRET")
-		if jwtSecret == "" {
-			jwtSecret = "rekberkuy-super-secret-key-fase-mvp" // Fallback aman untuk development lokal
-		}
-
-		// 4. Parse dan validasi Token Claims menggunakan struct dari domain user
+		// 3. Parse and validate the Token Claims using the struct from the user domain
 		token, err := jwt.ParseWithClaims(tokenString, &domain.JWTCustomClaims{}, func(t *jwt.Token) (interface{}, error) {
-			// Pastikan metode enkripsi token adalah HMAC (HS256)
+			// Ensure the token encryption method is HMAC (HS256)
 			if _, ok := t.Method.(*jwt.SigningMethodHMAC); !ok {
-				return nil, fmt.Errorf("metode signing tidak terduga: %v", t.Header["alg"])
+				return nil, fmt.Errorf("unexpected signing method: %v", t.Header["alg"])
 			}
-			return []byte(jwtSecret), nil
+			return []byte(a.jwtSecret), nil
 		})
 
-		// Jika token rusak, dimanipulasi, atau sudah expired, langsung tendang balik
+		// If the token is broken, tampered with, or expired, reject it immediately
 		if err != nil || !token.Valid {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Akses ditolak: Token tidak valid atau sudah kedaluwarsa"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Access denied: Token invalid or expired"})
 			c.Abort()
 			return
 		}
 
 		claims, ok := token.Claims.(*domain.JWTCustomClaims)
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Akses ditolak: Gagal membaca payload claims"})
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Access denied: Failed to read claims payload"})
 			c.Abort()
 			return
 		}
 
-		// 5. Cocokkan apakah Role yang ada di Token diizinkan mengakses endpoint ini (RBAC)
+		// 4. Match whether the Role in the Token is allowed to access this endpoint (RBAC)
 		isAllowed := false
 		for _, role := range allowedRoles {
 			if claims.Role == role {
@@ -71,13 +75,13 @@ func AuthRoleMiddleware(allowedRoles ...domain.UserRole) gin.HandlerFunc {
 		}
 
 		if !isAllowed {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Hak akses ditolak: Anda tidak memiliki wewenang untuk mengeksekusi aksi finansial ini!"})
+			c.JSON(http.StatusForbidden, gin.H{"error": "Permission denied: You are not authorized to execute this financial action!"})
 			c.Abort()
 			return
 		}
 
-		// 6. Suntikkan User ID hasil verifikasi aman ke dalam Context Gin
-		// Tujuannya agar layer usecase di bawahnya bisa tahu siapa user yang sedang bertransaksi tanpa perlu parsing ulang
+		// 5. Inject the verified User ID into the Gin Context
+		// The purpose is so the usecase layer below knows who the transacting user is without re-parsing
 		c.Set("user_id", claims.UserID)
 		c.Set("user_role", string(claims.Role))
 

@@ -5,18 +5,18 @@ import (
 	"log"
 	"time"
 
-	"rekberkuy/core-service/internal/domain" 
+	"rekberkuy/core-service/internal/domain"
 	"rekberkuy/core-service/internal/usecase"
 )
 
 type AutoReleaseWorker struct {
-	txRepo       domain.TransactionRepository 
-	goodsUsecase *usecase.TransactionGoodsUsecase 
+	txRepo       domain.TransactionRepository
+	goodsUsecase *usecase.TransactionGoodsUsecase
 	ticker       *time.Ticker
 	stopChan     chan struct{}
 }
 
-// NewAutoReleaseWorker menginisialisasi robot pemindai transaksi barang expired
+// NewAutoReleaseWorker initializes the scanner bot for expired goods transactions
 func NewAutoReleaseWorker(tr domain.TransactionRepository, gu *usecase.TransactionGoodsUsecase) *AutoReleaseWorker {
 	return &AutoReleaseWorker{
 		txRepo:       tr,
@@ -27,7 +27,7 @@ func NewAutoReleaseWorker(tr domain.TransactionRepository, gu *usecase.Transacti
 
 func (w *AutoReleaseWorker) Start(ctx context.Context) {
 	w.ticker = time.NewTicker(1 * time.Hour)
-	log.Println("🤖 ROBOT: Auto-Release Engine RekberKuy berhasil dinyalakan...")
+	log.Println("🤖 ROBOT: RekberKuy Auto-Release Engine successfully started...")
 
 	go func() {
 		for {
@@ -35,7 +35,7 @@ func (w *AutoReleaseWorker) Start(ctx context.Context) {
 			case <-w.ticker.C:
 				w.executeAutoRelease(ctx)
 			case <-w.stopChan:
-				log.Println("🤖 ROBOT: Auto-Release Engine dimatikan secara aman.")
+				log.Println("🤖 ROBOT: Auto-Release Engine safely stopped.")
 				return
 			}
 		}
@@ -43,32 +43,32 @@ func (w *AutoReleaseWorker) Start(ctx context.Context) {
 }
 
 func (w *AutoReleaseWorker) executeAutoRelease(ctx context.Context) {
-	log.Println("🤖 ROBOT: Memulai pemindaian transaksi barang yang melewati batas konfirmasi...")
-	
+	log.Println("🤖 ROBOT: Starting scan for goods transactions past the confirmation deadline...")
+
 	ids, err := w.txRepo.GetExpiredLockedTransactions(ctx)
 	if err != nil {
-		log.Printf("🤖 ROBOT ERROR: Gagal memindai data expired dari repositori: %v", err)
+		log.Printf("🤖 ROBOT ERROR: Failed to scan expired data from repository: %v", err)
 		return
 	}
 
 	if len(ids) == 0 {
-		log.Println("🤖 ROBOT: Tidak ada transaksi expired yang menggantung jam ini.")
+		log.Println("🤖 ROBOT: No expired transactions pending this hour.")
 		return
 	}
 
-	log.Printf("🤖 ROBOT: Menemukan %d transaksi barang expired siap di-release otomatis.", len(ids))
+	log.Printf("🤖 ROBOT: Found %d expired goods transactions ready for auto-release.", len(ids))
 
 	for _, txID := range ids {
-		log.Printf("🤖 ROBOT: Menjalankan pemaksaan release dana untuk Transaksi ID: %s", txID)
-		err := w.goodsUsecase.ReleaseFundsGoods(ctx, txID) 
+		log.Printf("🤖 ROBOT: Forcing fund release for Transaction ID: %s", txID)
+		err := w.goodsUsecase.ReleaseFundsGoods(ctx, txID)
 		if err != nil {
-			log.Printf("🤖 ROBOT ERROR: Gagal melepas dana otomatis untuk transaksi %s: %v", txID, err)
+			log.Printf("🤖 ROBOT ERROR: Failed to auto-release funds for transaction %s: %v", txID, err)
 			continue
 		}
-		log.Printf("🤖 ROBOT SUCCESS: Dana transaksi %s berhasil dilepas otomatis ke penjual.", txID)
+		log.Printf("🤖 ROBOT SUCCESS: Funds for transaction %s successfully auto-released to seller.", txID)
 	}
 
-	log.Println("🤖 ROBOT: Seluruh siklus pemindaian berkala selesai.")
+	log.Println("🤖 ROBOT: All periodic scan cycles completed.")
 }
 
 func (w *AutoReleaseWorker) Stop() {

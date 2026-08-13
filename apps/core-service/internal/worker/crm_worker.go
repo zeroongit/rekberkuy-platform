@@ -11,14 +11,18 @@ import (
 
 type crmWorker struct {
 	walletRepo  domain.WalletRepository
+	reviewRepo  domain.ReviewRepository
+	uow         domain.UnitOfWork
 	calculator  *usecase.FinanceCalculator
 	stopChannel chan struct{}
 }
 
-// NewCRMWorker bertindak sebagai constructor untuk menginisialisasi Worker (Patuhi kontrak domain.CRMWorker)
-func NewCRMWorker(walletRepo domain.WalletRepository, calculator *usecase.FinanceCalculator) domain.CRMWorker {
+// NewCRMWorker acts as a constructor to initialize the Worker (comply with the domain.CRMWorker contract)
+func NewCRMWorker(walletRepo domain.WalletRepository, reviewRepo domain.ReviewRepository, uow domain.UnitOfWork, calculator *usecase.FinanceCalculator) domain.CRMWorker {
 	return &crmWorker{
 		walletRepo:  walletRepo,
+		reviewRepo:  reviewRepo,
+		uow:         uow,
 		calculator:  calculator,
 		stopChannel: make(chan struct{}),
 	}
@@ -63,23 +67,22 @@ func (w *crmWorker) Stop() {
 func (w *crmWorker) ExecuteMonthlyEvaluation(ctx context.Context) error {
 	log.Println("[WORKER] Initiating monthly CRM evaluation batch transaction...")
 
-	// 1. Ambil pointer data user-profile murni (*[]*domain.UserProfile)
+	// 1. Fetch all user profiles (read, outside the transactional boundary)
 	users, err := w.walletRepo.GetAllUsersForCRMEvaluation(ctx)
 	if err != nil {
 		return err
 	}
 
 	for _, user := range users {
-		// Menggunakan urutan transaksi terisolasi ACID per user
-		err := w.walletRepo.ExecuteInTransaction(ctx, func(txRepo domain.WalletRepository) error {
-			// 2. Cari data status CRM target
-			crmProfile, err := txRepo.GetCRMLoyaltyByUserID(ctx, user.ID)
+		// Evaluate each user in its own isolated ACID transaction unit
+		err := w.uow.Do(ctx, func(ctx context.Context, stores domain.TxStores) error {
+			crmProfile, err := stores.Wallets.GetCRMLoyaltyByUserID(ctx, user.ID)
 			if err != nil {
 				log.Printf("[WORKER_SKIP] User ID %s doesn't have active CRM table log. Skipping.", user.ID)
 				return nil
 			}
 
-			// 3. Logika multi-role adaptif ala shopee
+			// Adaptive multi-role logic
 			rekberType := domain.TypeGoods
 			if user.Role == domain.RoleEventOrganizer {
 				rekberType = domain.TypeEvents
@@ -87,25 +90,27 @@ func (w *crmWorker) ExecuteMonthlyEvaluation(ctx context.Context) error {
 				rekberType = domain.TypeServices
 			}
 
-			// Rating aman default anti-fraud
+			// Real average rating from reviews; fall back to a neutral 5.0 when the
+			// merchant has no reviews yet (or the read fails).
 			currentRating := 5.0
+			if w.reviewRepo != nil {
+				if avg, err := w.reviewRepo.GetAverageRatingForUser(ctx, user.ID); err == nil && avg > 0 {
+					currentRating = avg
+				}
+			}
 
-			// 4. Hitung kasta menggunakan calculator yang terpisah modular
 			newTier, statusMsg := w.calculator.EvaluateMonthlyMerchantTier(rekberType, *crmProfile, currentRating)
 
 			oldTier := crmProfile.CurrentTier
 			crmProfile.CurrentTier = newTier
 
-			// Akumulasi sanksi low sales jika performa turun
 			if statusMsg == "WARNING_LOW_SALES" {
 				crmProfile.ConsecutiveFailedMonths++
 			} else if statusMsg == "STAY_GOLD" || statusMsg == "UPGRADE_TO_GOLD" || statusMsg == "UPGRADE_TO_SILVER" {
-				crmProfile.ConsecutiveFailedMonths = 0 // Reset jika penjualan pulih
+				crmProfile.ConsecutiveFailedMonths = 0
 			}
 
-			// 5. Simpan kembali kasta BRONZE/SILVER/GOLD yang valid ke database
-			err = txRepo.UpdateCRMLoyalty(ctx, crmProfile)
-			if err != nil {
+			if err := stores.Wallets.UpdateCRMLoyalty(ctx, crmProfile); err != nil {
 				return err
 			}
 

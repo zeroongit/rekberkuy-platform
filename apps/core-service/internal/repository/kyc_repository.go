@@ -27,17 +27,17 @@ func (r *kycRepository) SubmitKYC(ctx context.Context, kyc *domain.KYCSubmission
 			status = 'PENDING',
 			updated_at = NOW()
 	`
-	_, err := r.db.ExecContext(ctx, query, 
-		kyc.ID, 
-		kyc.UserID, 
-		string(kyc.TargetRole), 
-		kyc.IDCardNumber, 
-		kyc.IDCardURL, 
-		kyc.SelfieURL, 
+	_, err := r.db.ExecContext(ctx, query,
+		kyc.ID,
+		kyc.UserID,
+		string(kyc.TargetRole),
+		kyc.IDCardNumber,
+		kyc.IDCardURL,
+		kyc.SelfieURL,
 		string(kyc.Status),
 	)
 	if err != nil {
-		return fmt.Errorf("gagal mencatat berkas kyc ke database: %w", err)
+		return fmt.Errorf("failed to record kyc documents to database: %w", err)
 	}
 	return nil
 }

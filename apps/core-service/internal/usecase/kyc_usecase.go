@@ -22,7 +22,7 @@ func (u *KYCUsecase) SubmitUserKYC(ctx context.Context, userID string, targetRol
 		IDCardNumber: idCard,
 		IDCardURL:    idCardURL,
 		SelfieURL:    selfieURL,
-		Status:       domain.KYCPending, // Otomatis berstatus PENDING sesuai enum domain asli
+		Status:       domain.KYCPending, // Automatically set to PENDING status per the original domain enum
 	}
 	return u.kycRepo.SubmitKYC(ctx, kycData)
 }
