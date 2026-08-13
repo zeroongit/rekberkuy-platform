@@ -79,6 +79,13 @@ func TestLoadConfig_HappyPath(t *testing.T) {
 	if cfg.Redis.TTL.IdempotencySec != 86400 {
 		t.Errorf("Idempotency TTL default = %d, want 86400", cfg.Redis.TTL.IdempotencySec)
 	}
+	// AI: backend-ai owns the Groq key; core-service owns the decision threshold.
+	if cfg.AI.ScreeningEnabled {
+		t.Error("AI.ScreeningEnabled default should be false")
+	}
+	if cfg.AI.UnsafeThreshold != 0.5 {
+		t.Errorf("AI.UnsafeThreshold default = %v, want 0.5", cfg.AI.UnsafeThreshold)
+	}
 }
 
 func TestLoadConfig_DevDefaultsJWT(t *testing.T) {

@@ -56,8 +56,14 @@ type SupabaseConfig struct {
 
 type AIConfig struct {
 	ServiceURL string
-	GroqAPIKey string
-	// FailOpen controls fraud-screening behaviour when backend-ai is unreachable.
+	// ScreeningEnabled turns on real fraud scoring via the backend-ai verification
+	// service. false (default) = use the always-safe stub (development).
+	ScreeningEnabled bool
+	// UnsafeThreshold is the platform's OWN fraud decision threshold: a transaction
+	// is considered unsafe (release refused) when the backend-ai score >= this.
+	// core-service owns the decision; backend-ai only provides the score.
+	UnsafeThreshold float64
+	// FailOpen controls behaviour when backend-ai is unreachable or returns an error.
 	// false (default) = fail-closed: refuse to release funds when screening is unavailable.
 	// true = fail-open: assume safe (availability over strictness). Not recommended for production.
 	FailOpen bool
@@ -118,9 +124,10 @@ func LoadConfig() *Config {
 			ServiceRoleKey: getEnv("SUPABASE_SERVICE_ROLE_KEY", ""),
 		},
 		AI: AIConfig{
-			ServiceURL: getEnv("AI_SERVICE_URL", "http://localhost:8081"),
-			GroqAPIKey: getEnv("GROQ_API_KEY", ""),
-			FailOpen:   getEnvBool("FRAUD_FAIL_OPEN", false),
+			ServiceURL:       getEnv("AI_SERVICE_URL", "http://localhost:8081"),
+			ScreeningEnabled: getEnvBool("FRAUD_SCREENING_ENABLED", false),
+			UnsafeThreshold:  getEnvFloat("FRAUD_UNSAFE_THRESHOLD", 0.5),
+			FailOpen:         getEnvBool("FRAUD_FAIL_OPEN", false),
 		},
 		Blockchain: BlockchainConfig{
 			AvalancheRPCURL:    getEnv("AVALANCHE_RPC_URL", ""),
@@ -243,4 +250,18 @@ func getEnvInt64(key string, defaultValue int64) int64 {
 		return defaultValue
 	}
 	return n
+}
+
+// getEnvFloat parses a float64 env var. Returns the default when empty or invalid.
+func getEnvFloat(key string, defaultValue float64) float64 {
+	v := os.Getenv(key)
+	if v == "" {
+		return defaultValue
+	}
+	var f float64
+	if _, err := fmt.Sscanf(v, "%f", &f); err != nil {
+		log.Printf("⚠️  Variable %s is invalid (%q), using default %f", key, v, defaultValue)
+		return defaultValue
+	}
+	return f
 }

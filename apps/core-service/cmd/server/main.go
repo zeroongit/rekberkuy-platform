@@ -265,14 +265,17 @@ func setupIdempotency(ctx context.Context, cfg *config.Config, sqlDB *sql.DB) do
 	return repository.NewIdempotencyRepository(sqlDB)
 }
 
-// newFraudClient selects the fraud scoring adapter: HTTP to backend-ai when
-// Groq is configured, falls back to stub (always safe) for development.
+// newFraudClient selects the fraud scoring adapter: HTTP to the backend-ai
+// verification service when screening is enabled, else the always-safe stub.
+//
+// backend-ai only RETURNS A SCORE; the adapter (this process) makes the isSafe
+// decision using cfg.AI.UnsafeThreshold — the backend is the decision maker.
 func newFraudClient(cfg *config.Config) domain.FraudClient {
-	if cfg.AI.GroqAPIKey != "" {
-		log.Printf("🔌 Fraud backend: backend-ai (%s)", cfg.AI.ServiceURL)
-		return fraud.NewFraudHTTPClient(cfg.AI.ServiceURL, cfg.AI.GroqAPIKey, 5*time.Second, cfg.AI.FailOpen)
+	if cfg.AI.ScreeningEnabled {
+		log.Printf("🔌 Fraud backend: backend-ai (%s), decision threshold=%.2f", cfg.AI.ServiceURL, cfg.AI.UnsafeThreshold)
+		return fraud.NewFraudHTTPClient(cfg.AI.ServiceURL, 5*time.Second, cfg.AI.FailOpen, cfg.AI.UnsafeThreshold)
 	}
-	log.Println("🔌 Fraud backend: stub (backend-ai not configured)")
+	log.Println("🔌 Fraud backend: stub (FRAUD_SCREENING_ENABLED=false)")
 	return fraud.NewFraudClientStub()
 }
 

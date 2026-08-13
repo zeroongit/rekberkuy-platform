@@ -34,27 +34,33 @@ func (f *fraudClientStub) AnalyzeTransactionRisk(ctx context.Context, userID str
 // HTTP client (calls the backend-ai Python FastAPI)
 // ---------------------------------------------------------------------------
 
-// fraudHTTPClient calls the /fraud/analyze endpoint on backend-ai.
+// fraudHTTPClient calls the /api/v1/fraud/score endpoint on backend-ai.
+//
+// backend-ai is a VERIFICATION service: it returns only a score (+ reason).
+// This adapter owns the DECISION: it computes isSafe by comparing the score to
+// the platform's own UnsafeThreshold. On any error reaching backend-ai, the
+// failOpen policy decides (fail-closed = refuse the release, the money-safe default).
 type fraudHTTPClient struct {
-	baseURL  string
-	apiKey   string
-	client   *http.Client
-	failOpen bool // true = assume safe when the service is unreachable (availability);
+	baseURL          string
+	client           *http.Client
+	unsafeThreshold  float64 // score >= threshold -> unsafe (core-service's decision)
+	failOpen         bool     // true = assume safe when the service is unreachable (availability);
 	//        false (default) = return an error so callers refuse the release (money-safety).
 }
 
 // NewFraudHTTPClient creates an HTTP-based fraud adapter to backend-ai.
-// baseURL example: "http://localhost:8081". failOpen=false is the safe default
-// for an escrow platform (refuse release when fraud screening is unavailable).
-func NewFraudHTTPClient(baseURL, apiKey string, timeout time.Duration, failOpen bool) domain.FraudClient {
+// baseURL example: "http://localhost:8081". unsafeThreshold is the platform's own
+// decision threshold (score >= threshold -> unsafe). failOpen=false is the safe
+// default for an escrow platform (refuse release when fraud screening is unavailable).
+func NewFraudHTTPClient(baseURL string, timeout time.Duration, failOpen bool, unsafeThreshold float64) domain.FraudClient {
 	if timeout <= 0 {
 		timeout = 5 * time.Second
 	}
 	return &fraudHTTPClient{
-		baseURL:  baseURL,
-		apiKey:   apiKey,
-		client:   &http.Client{Timeout: timeout},
-		failOpen: failOpen,
+		baseURL:         baseURL,
+		client:          &http.Client{Timeout: timeout},
+		unsafeThreshold: unsafeThreshold,
+		failOpen:        failOpen,
 	}
 }
 
@@ -63,9 +69,11 @@ type fraudAnalyzeRequest struct {
 	Amount int64  `json:"amount"`
 }
 
+// fraudAnalyzeResponse mirrors backend-ai's verification payload (score + reason only).
+// is_safe is intentionally absent — the decision is core-service's.
 type fraudAnalyzeResponse struct {
 	Score  float64 `json:"score"`
-	IsSafe bool    `json:"is_safe"`
+	Reason string  `json:"reason"`
 }
 
 func (c *fraudHTTPClient) AnalyzeTransactionRisk(ctx context.Context, userID string, amount int64) (float64, bool, error) {
@@ -75,14 +83,11 @@ func (c *fraudHTTPClient) AnalyzeTransactionRisk(ctx context.Context, userID str
 		return 0, false, fmt.Errorf("failed to marshal fraud body: %w", err)
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/fraud/analyze", bytes.NewReader(body))
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/api/v1/fraud/score", bytes.NewReader(body))
 	if err != nil {
 		return 0, false, fmt.Errorf("failed to create fraud request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
-	if c.apiKey != "" {
-		req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	}
 
 	resp, err := c.client.Do(req)
 	if err != nil {
@@ -108,5 +113,8 @@ func (c *fraudHTTPClient) AnalyzeTransactionRisk(ctx context.Context, userID str
 		}
 		return 0, false, fmt.Errorf("failed to decode fraud response (fail-closed): %w", err)
 	}
-	return out.Score, out.IsSafe, nil
+
+	// THE DECISION LIVES HERE, NOT IN backend-ai: score >= threshold -> unsafe.
+	isSafe := out.Score < c.unsafeThreshold
+	return out.Score, isSafe, nil
 }
