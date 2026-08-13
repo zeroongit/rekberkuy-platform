@@ -26,6 +26,7 @@ type mockTransactionRepo struct {
 	onGetTransactionByID             func(ctx context.Context, id string) (*domain.Transaction, error)
 	onUpdateTransactionStatus        func(ctx context.Context, id string, status domain.TransactionStatus) error
 	onGetExpiredLocked               func(ctx context.Context) ([]string, error)
+	onGetReleasedMilestonesTotal     func(ctx context.Context, txID string) (int64, error)
 	onGetMilestoneByID               func(ctx context.Context, id string) (*domain.ServiceMilestone, error)
 	onUpdateMilestoneStatus          func(ctx context.Context, id string, status string) error
 	onGetEventVendorPayouts          func(ctx context.Context, txID string) ([]domain.EventVendorPayout, error)
@@ -62,6 +63,13 @@ func (m *mockTransactionRepo) GetExpiredLockedTransactions(ctx context.Context) 
 		return m.onGetExpiredLocked(ctx)
 	}
 	return nil, nil
+}
+
+func (m *mockTransactionRepo) GetReleasedMilestonesTotalByTxID(ctx context.Context, txID string) (int64, error) {
+	if m.onGetReleasedMilestonesTotal != nil {
+		return m.onGetReleasedMilestonesTotal(ctx, txID)
+	}
+	return 0, nil
 }
 
 func (m *mockTransactionRepo) GetMilestoneByID(ctx context.Context, id string) (*domain.ServiceMilestone, error) {

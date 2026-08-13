@@ -186,7 +186,20 @@ func (u *TransactionEventsUsecase) ProcessEventVendorPayouts(ctx context.Context
 		if err := stores.Transactions.UpdateTransactionStatus(ctx, transactionID, domain.StatusReleased); err != nil {
 			return fmt.Errorf("failed to change event parent transaction state: %w", err)
 		}
-		return stores.Finance.UpdatePlatformFinance(ctx, -txLock.AmountGross, txLock.ServiceFee, txLock.MidtransFee)
+		// Settle the event ledger money-soundly:
+		//   - vendors were just credited their AmountRequested (wallet mutations)
+		//   - the platform takes a 5% fee (recognised as revenue)
+		//   - the remaining surplus (AmountGross - vendor total - 5%) stays held in
+		//     escrow, pending the EO-bonus / participant-refund distribution which
+		//     needs a participant data model not yet present (see CalculateEventAudit).
+		//     Previously the entire AmountGross left escrow with 0 revenue booked, so
+		//     the surplus silently vanished — this keeps the ledger balanced.
+		var vendorTotal int64
+		for _, p := range payouts {
+			vendorTotal += p.AmountRequested
+		}
+		platformFee := txLock.AmountGross * 5 / 100
+		return stores.Finance.UpdatePlatformFinance(ctx, -(vendorTotal+platformFee), platformFee, txLock.MidtransFee)
 	}); err != nil {
 		return err
 	}

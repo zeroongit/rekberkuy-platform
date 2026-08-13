@@ -158,7 +158,7 @@ func TestDispute_ResolveDispute_RefundBuyer(t *testing.T) {
 		t.Fatalf("expected success, got: %v", err)
 	}
 	if creditedWallet != "buyer-1" || creditedAmount != 200000 {
-		t.Errorf("refund = %s/%d, want buyer-1/200000 (full gross, buyer made whole)", creditedWallet, creditedAmount)
+		t.Errorf("refund = %s/%d, want buyer-1/200000 (full gross — goods has no released milestones)", creditedWallet, creditedAmount)
 	}
 	if txStatus != domain.StatusRefunded {
 		t.Errorf("transaction status = %s, want REFUNDED", txStatus)
@@ -168,11 +168,59 @@ func TestDispute_ResolveDispute_RefundBuyer(t *testing.T) {
 	}
 }
 
+// Regression: a milestone-based services transaction that already released some
+// milestones must refund only the escrow still held, not the full AmountGross —
+// otherwise the platform over-pays the buyer and escrow goes negative.
+func TestDispute_ResolveDispute_RefundBuyer_MinusReleasedMilestones(t *testing.T) {
+	ctx := context.Background()
+	var creditedAmount int64
+	var escrowDelta int64
+
+	txRepo := &mockTransactionRepo{
+		onGetTransactionByID: func(ctx context.Context, id string) (*domain.Transaction, error) {
+			return &domain.Transaction{ID: "tx-svc", BuyerID: "buyer-1", SellerID: "seller-1", Status: domain.StatusDisputed, AmountGross: 10000000}, nil
+		},
+		onGetReleasedMilestonesTotal: func(ctx context.Context, txID string) (int64, error) {
+			return 6000000, nil // Rp 6M already paid to the freelancer via released milestones
+		},
+		onUpdateTransactionStatus: func(ctx context.Context, id string, status domain.TransactionStatus) error { return nil },
+	}
+	walletRepo := &mockWalletRepo{
+		onUpdateBalanceTx: func(ctx context.Context, rec *domain.RekberPayTransaction, modifier int64) error {
+			creditedAmount = modifier
+			return nil
+		},
+	}
+	financeRepo := &mockFinanceRepo{
+		onUpdatePlatformFinance: func(ctx context.Context, escrowDelta_, revenueDelta, midtransFeeDelta int64) error {
+			escrowDelta = escrowDelta_
+			return nil
+		},
+	}
+	disputeRepo := &mockDisputeRepo{
+		onGetDisputeByID: func(ctx context.Context, id string) (*domain.Dispute, error) {
+			return &domain.Dispute{ID: "d-1", TransactionID: "tx-svc", Status: domain.DisputeStatusUnderReview}, nil
+		},
+	}
+	u := usecase.NewDisputeUsecase(newMockUnitOfWorkWithDisputes(txRepo, walletRepo, financeRepo, disputeRepo), disputeRepo)
+
+	if err := u.ResolveDispute(ctx, "d-1", "admin-1", domain.OutcomeRefundBuyer, "x"); err != nil {
+		t.Fatalf("expected success, got: %v", err)
+	}
+	if creditedAmount != 4000000 {
+		t.Errorf("refund = %d, want 4000000 (10M gross - 6M already released)", creditedAmount)
+	}
+	if escrowDelta != -4000000 {
+		t.Errorf("escrow delta = %d, want -4000000", escrowDelta)
+	}
+}
+
 func TestDispute_ResolveDispute_ReleaseToSeller(t *testing.T) {
 	ctx := context.Background()
 	var creditedWallet string
 	var creditedAmount int64
 	var txStatus domain.TransactionStatus
+	var revenue int64
 
 	txRepo := &mockTransactionRepo{
 		onGetTransactionByID: func(ctx context.Context, id string) (*domain.Transaction, error) {
@@ -193,18 +241,27 @@ func TestDispute_ResolveDispute_ReleaseToSeller(t *testing.T) {
 			return nil
 		},
 	}
+	financeRepo := &mockFinanceRepo{
+		onUpdatePlatformFinance: func(ctx context.Context, escrowDelta, revenueDelta, midtransFeeDelta int64) error {
+			revenue = revenueDelta
+			return nil
+		},
+	}
 	disputeRepo := &mockDisputeRepo{
 		onGetDisputeByID: func(ctx context.Context, id string) (*domain.Dispute, error) {
 			return &domain.Dispute{ID: "d-1", TransactionID: "tx-1", Status: domain.DisputeStatusUnderReview}, nil
 		},
 	}
-	u := usecase.NewDisputeUsecase(newMockUnitOfWorkWithDisputes(txRepo, walletRepo, &mockFinanceRepo{}, disputeRepo), disputeRepo)
+	u := usecase.NewDisputeUsecase(newMockUnitOfWorkWithDisputes(txRepo, walletRepo, financeRepo, disputeRepo), disputeRepo)
 
 	if err := u.ResolveDispute(ctx, "d-1", "admin-1", domain.OutcomeReleaseToSeller, "seller was right"); err != nil {
 		t.Fatalf("expected success, got: %v", err)
 	}
 	if creditedWallet != "seller-1" || creditedAmount != 180000 {
 		t.Errorf("payout = %s/%d, want seller-1/180000 (AmountNet)", creditedWallet, creditedAmount)
+	}
+	if revenue != 20000 {
+		t.Errorf("revenue = %d, want 20000 (full retention = AmountGross - AmountNet)", revenue)
 	}
 	if txStatus != domain.StatusReleased {
 		t.Errorf("transaction status = %s, want RELEASED", txStatus)

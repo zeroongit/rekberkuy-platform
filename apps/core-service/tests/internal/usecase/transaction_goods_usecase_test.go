@@ -162,11 +162,22 @@ func TestReleaseFundsGoods_Success(t *testing.T) {
 			return nil
 		},
 	}
+	var revenue int64
+	financeRepo := &mockFinanceRepo{
+		onUpdatePlatformFinance: func(ctx context.Context, escrowDelta, revenueDelta, midtransFeeDelta int64) error {
+			revenue = revenueDelta
+			return nil
+		},
+	}
 
-	u := usecase.NewTransactionGoodsUsecase(newMockUnitOfWork(txRepo, &mockWalletRepo{}, &mockFinanceRepo{}, nil), txRepo, usecase.NewFinanceCalculator(), &mockFraudClient{}, &mockRelayer{})
+	u := usecase.NewTransactionGoodsUsecase(newMockUnitOfWork(txRepo, &mockWalletRepo{}, financeRepo, nil), txRepo, usecase.NewFinanceCalculator(), &mockFraudClient{}, &mockRelayer{})
 
 	if err := u.ReleaseFundsGoods(ctx, txID); err != nil {
 		t.Fatalf("expected fund release succeeded, got error: %v", err)
+	}
+	// Full platform retention (protection fee + commission) = AmountGross - AmountNet.
+	if revenue != 15000 {
+		t.Errorf("revenue = %d, want 15000 (AmountGross 112500 - AmountNet 97500)", revenue)
 	}
 }
 

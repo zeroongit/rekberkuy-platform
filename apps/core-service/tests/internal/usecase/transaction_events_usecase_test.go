@@ -88,7 +88,15 @@ func TestProcessEventVendorPayouts_Success(t *testing.T) {
 		},
 	}
 
-	u := usecase.NewTransactionEventsUsecase(newMockUnitOfWork(txRepo, walletRepo, &mockFinanceRepo{}, nil), txRepo, walletRepo, usecase.NewFinanceCalculator(), &mockFraudClient{}, &mockRelayer{})
+	var revenue, escrowDelta int64
+	financeRepo := &mockFinanceRepo{
+		onUpdatePlatformFinance: func(ctx context.Context, e, r, m int64) error {
+			escrowDelta, revenue = e, r
+			return nil
+		},
+	}
+
+	u := usecase.NewTransactionEventsUsecase(newMockUnitOfWork(txRepo, walletRepo, financeRepo, nil), txRepo, walletRepo, usecase.NewFinanceCalculator(), &mockFraudClient{}, &mockRelayer{})
 
 	if err := u.ProcessEventVendorPayouts(ctx, txID); err != nil {
 		t.Fatalf("expected success, got: %v", err)
@@ -101,6 +109,14 @@ func TestProcessEventVendorPayouts_Success(t *testing.T) {
 	}
 	if releasedStatuses["pay-1"] != domain.VendorPayoutApproved || releasedStatuses["pay-2"] != domain.VendorPayoutApproved {
 		t.Errorf("payout status not updated to APPROVED: %v", releasedStatuses)
+	}
+	// Vendor total = 5M + 3M = 8M; platform fee = 5% of 50M = 2.5M (revenue);
+	// escrow releases vendor total + platform fee = 10.5M; the surplus stays held.
+	if revenue != 2500000 {
+		t.Errorf("platform fee revenue = %d, want 2500000 (5%% of 50M)", revenue)
+	}
+	if escrowDelta != -10500000 {
+		t.Errorf("escrow delta = %d, want -10500000 (vendor total 8M + 2.5M fee)", escrowDelta)
 	}
 }
 

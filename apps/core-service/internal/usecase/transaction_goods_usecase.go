@@ -150,7 +150,10 @@ func (u *TransactionGoodsUsecase) ReleaseFundsGoods(ctx context.Context, transac
 		if err := stores.Transactions.UpdateTransactionStatus(ctx, txLock.ID, domain.StatusReleased); err != nil {
 			return fmt.Errorf("failed to change transaction state to RELEASED: %w", err)
 		}
-		return stores.Finance.UpdatePlatformFinance(ctx, -txLock.AmountGross, txLock.ServiceFee, txLock.MidtransFee)
+		// Recognise the full platform retention (buyer-protection fee + seller
+		// commission) as revenue so the ledger balances: AmountGross leaves escrow,
+		// AmountNet goes to the seller, the remainder is platform revenue.
+		return stores.Finance.UpdatePlatformFinance(ctx, -txLock.AmountGross, txLock.AmountGross-txLock.AmountNet, txLock.MidtransFee)
 	}); err != nil {
 		return err
 	}

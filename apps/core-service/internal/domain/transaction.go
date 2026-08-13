@@ -151,6 +151,12 @@ type TransactionRepository interface {
 	UpdateTransactionStatus(ctx context.Context, id string, status TransactionStatus) error
 	GetExpiredLockedTransactions(ctx context.Context) ([]string, error)
 
+	// GetReleasedMilestonesTotalByTxID returns the sum of amounts of milestones
+	// already RELEASED for a services transaction. Used to compute the escrow that
+	// remains held when refunding a disputed transaction, so a refund never pays
+	// out more than what is still locked.
+	GetReleasedMilestonesTotalByTxID(ctx context.Context, transactionID string) (int64, error)
+
 	GetMilestoneByID(ctx context.Context, id string) (*ServiceMilestone, error)
 	UpdateMilestoneStatus(ctx context.Context, id string, status string) error
 	GetEventVendorPayoutsByTxID(ctx context.Context, txID string) ([]EventVendorPayout, error)

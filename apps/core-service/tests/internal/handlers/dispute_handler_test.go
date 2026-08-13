@@ -29,6 +29,12 @@ func (m *dTxRepo) UpdateTransactionStatus(ctx context.Context, id string, status
 	return nil
 }
 
+// ResolveDispute now reads released milestones to cap a refund; stub returns 0
+// (the dispute handler tests use goods-shaped transactions with no milestones).
+func (m *dTxRepo) GetReleasedMilestonesTotalByTxID(ctx context.Context, transactionID string) (int64, error) {
+	return 0, nil
+}
+
 type dWalletRepo struct {
 	domain.WalletRepository
 	lastWallet string

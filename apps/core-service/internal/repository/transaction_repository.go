@@ -182,6 +182,24 @@ func (r *TransactionRepository) GetExpiredLockedTransactions(ctx context.Context
 	return ids, nil
 }
 
+// GetReleasedMilestonesTotalByTxID sums the amounts of milestones already
+// RELEASED on a services transaction (0 for goods/events). Used to compute
+// remaining escrow during a disputed refund.
+func (r *TransactionRepository) GetReleasedMilestonesTotalByTxID(ctx context.Context, transactionID string) (int64, error) {
+	const query = `SELECT COALESCE(SUM(amount), 0) FROM service_milestones WHERE transaction_id = $1 AND status = 'RELEASED'`
+	var total int64
+	var err error
+	if r.tx != nil {
+		err = r.tx.QueryRowContext(ctx, query, transactionID).Scan(&total)
+	} else {
+		err = r.db.QueryRowContext(ctx, query, transactionID).Scan(&total)
+	}
+	if err != nil {
+		return 0, fmt.Errorf("failed to sum released milestones for %s: %w", transactionID, err)
+	}
+	return total, nil
+}
+
 func (r *TransactionRepository) GetMilestoneByID(ctx context.Context, id string) (*domain.ServiceMilestone, error) {
 	query := `SELECT id, transaction_id, milestone_index, title, amount, status FROM service_milestones WHERE id = $1`
 	var m domain.ServiceMilestone

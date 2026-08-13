@@ -117,23 +117,36 @@ func (u *DisputeUsecase) ResolveDispute(ctx context.Context, disputeID, adminID 
 
 		switch outcome {
 		case domain.OutcomeRefundBuyer:
+			// Refund only the escrow still held. For milestone-based services the
+			// already-released milestones left the buyer's wallet and cannot be
+			// clawed back, so refunding the full AmountGross would over-pay the
+			// buyer and drive escrow negative. Goods has no milestones -> released=0.
+			released, err := stores.Transactions.GetReleasedMilestonesTotalByTxID(ctx, tx.ID)
+			if err != nil {
+				return fmt.Errorf("failed to compute refundable escrow: %w", err)
+			}
+			refundAmount := tx.AmountGross - released
+			if refundAmount < 0 {
+				refundAmount = 0
+			}
+
 			desc := fmt.Sprintf("Dispute refund to buyer for transaction #%s", tx.ID)
 			refund := &domain.RekberPayTransaction{
 				ID:          uuid.New().String(),
 				WalletID:    tx.BuyerID,
 				Type:        domain.TxRefund,
 				Status:      domain.WalletStatusSuccess,
-				Amount:      tx.AmountGross,
+				Amount:      refundAmount,
 				Description: &desc,
 			}
-			if err := stores.Wallets.UpdateBalanceTx(ctx, refund, tx.AmountGross); err != nil {
+			if err := stores.Wallets.UpdateBalanceTx(ctx, refund, refundAmount); err != nil {
 				return fmt.Errorf("failed to refund buyer: %w", err)
 			}
 			if err := stores.Transactions.UpdateTransactionStatus(ctx, tx.ID, domain.StatusRefunded); err != nil {
 				return fmt.Errorf("failed to mark transaction REFUNDED: %w", err)
 			}
 			// Escrow returns to buyer; the platform takes no fee on a disputed refund.
-			if err := stores.Finance.UpdatePlatformFinance(ctx, -tx.AmountGross, 0, 0); err != nil {
+			if err := stores.Finance.UpdatePlatformFinance(ctx, -refundAmount, 0, 0); err != nil {
 				return fmt.Errorf("failed to reconcile finance: %w", err)
 			}
 		case domain.OutcomeReleaseToSeller:
@@ -152,8 +165,9 @@ func (u *DisputeUsecase) ResolveDispute(ctx context.Context, disputeID, adminID 
 			if err := stores.Transactions.UpdateTransactionStatus(ctx, tx.ID, domain.StatusReleased); err != nil {
 				return fmt.Errorf("failed to mark transaction RELEASED: %w", err)
 			}
-			// Same fee recognition as a normal release (commission kept by the platform).
-			if err := stores.Finance.UpdatePlatformFinance(ctx, -tx.AmountGross, tx.ServiceFee, tx.MidtransFee); err != nil {
+			// Recognise the full platform retention (buyer-protection fee + seller
+			// commission) as revenue, mirroring a normal release.
+			if err := stores.Finance.UpdatePlatformFinance(ctx, -tx.AmountGross, tx.AmountGross-tx.AmountNet, tx.MidtransFee); err != nil {
 				return fmt.Errorf("failed to reconcile finance: %w", err)
 			}
 		}
