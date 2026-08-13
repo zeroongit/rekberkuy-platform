@@ -1,66 +1,66 @@
 # 🧠 Gemini Code Assist - Global Documentation
 
-Panduan utama (Global Rules) untuk pengembangan **RekberKuy Platform**. Baca file ini untuk memahami gambaran besar sistem sebelum menulis kode. 
+The main guide (Global Rules) for developing the **RekberKuy Platform**. Read this file to understand the big picture of the system before writing any code.
 
-**PENTING**: Terdapat juga file `gemini.md` spesifik di masing-masing folder (`apps/core-service/`, `apps/dashboard-web/`, dan `blockchain/`) untuk detail teknis per modul.
-
----
-
-## 🚀 Ringkasan Project
-**RekberKuy** adalah platform rekening bersama (escrow) terpercaya untuk transaksi **Barang**, **Jasa**, dan **Event** (beserta Vendor Marketplace).
-- **Prinsip Utama**: Seluruh transaksi dan logika uang (Murni IDR) berjalan di **Backend**.
-- **Transparansi**: Setiap transaksi selesai dicatat sebagai *Audit Log* permanen di **Blockchain Avalanche**.
-- **Kepatuhan Hukum (Gasless)**: Karena pembayaran kripto belum legal di Indonesia, sistem berjalan murni dengan mata uang Rupiah (IDR). Interaksi dengan blockchain diterapkan melalui **Gasless Transaction** yang dieksekusi oleh Backend sebagai relayer.
+**IMPORTANT**: There is also a module-specific `gemini.md` file in each folder (`apps/core-service/`, `apps/dashboard-web/`, and `blockchain/`) with technical details per module.
 
 ---
 
-## 🏗️ Struktur & Arsitektur Sistem Utama
+## 🚀 Project Overview
+**RekberKuy** is a trusted joint-account (escrow) platform for **Goods**, **Services**, and **Event** transactions (plus a Vendor Marketplace).
+- **Core Principle**: All transactions and money logic (purely IDR) run on the **Backend**.
+- **Transparency**: Every completed transaction is recorded as a permanent *Audit Log* on the **Avalanche Blockchain**.
+- **Legal Compliance (Gasless)**: Because crypto payments are not yet legal in Indonesia, the system runs purely on Rupiah (IDR). Blockchain interaction is implemented via **Gasless Transactions** executed by the Backend acting as a relayer.
+
+---
+
+## 🏗️ Main System Structure & Architecture
 
 ### 1. Backend (`apps/core-service/`)
 - **Stack**: Golang 1.25, PostgreSQL (via Supabase), Redis.
-- **Arsitektur**: Clean Architecture Murni.
-  - **Alur Ketergantungan**: `delivery/http` ➔ `usecase` ➔ `repository` ➔ `domain`.
-  - **Aturan Ketat**: Dilarang melompati layer (misal `delivery` memanggil `repository` langsung) atau mengimpor arah terbalik (misal `domain` mengimpor `usecase`).
-- **Konteks Keuangan**: Sistem ini murni **Rupiah (IDR)**. Dilarang menggunakan/meminta alamat crypto dari pengguna. Backend secara otomatis mem-broadcast transaksi ke blockchain di belakang layar.
+- **Architecture**: Pure Clean Architecture.
+  - **Dependency Flow**: `delivery/http` ➔ `usecase` ➔ `repository` ➔ `domain`.
+  - **Strict Rules**: Do not skip layers (e.g. `delivery` calling `repository` directly) or import in reverse (e.g. `domain` importing `usecase`).
+- **Financial Context**: This system is purely **Rupiah (IDR)**. Do not use or request crypto addresses from users. The Backend automatically broadcasts transactions to the blockchain in the background.
 
 ### 2. Frontend (`apps/dashboard-web/`)
 - **Stack**: Next.js v16, Tailwind CSS v4, Shadcn/UI, TypeScript.
-- **Arsitektur**: Strictly **App Router** (`src/app/`).
-- **Aturan Ketat**: 
-  - Gunakan *Server Components* secara default.
-  - Gunakan komponen Shadcn/UI terlebih dahulu sebelum membuat sendiri.
-  - Dilarang menggunakan CSS module atau styled-components (Hanya Tailwind).
-  - Hindari penggunaan tipe `any` kecuali terpaksa.
+- **Architecture**: Strictly **App Router** (`src/app/`).
+- **Strict Rules**:
+  - Use *Server Components* by default.
+  - Prefer existing Shadcn/UI components before building your own.
+  - Do not use CSS modules or styled-components (Tailwind only).
+  - Avoid the `any` type unless absolutely necessary.
 
 ### 3. Blockchain (`blockchain/`)
 - **Stack**: Solidity, Hardhat v3, Avalanche C-Chain.
-- **Tujuan Khusus**: **HANYA SEBAGAI AUDIT LOG**.
-- **Aturan Ketat**: DILARANG meletakkan logika escrow, menahan dana, melakukan kalkulasi biaya, atau menyimpan data PII/sensitif (termasuk di `mapping`) secara on-chain.
+- **Sole Purpose**: **AUDIT LOG ONLY**.
+- **Strict Rules**: Do NOT put escrow logic, hold funds, perform fee calculations, or store PII/sensitive data (including in `mapping`) on-chain.
 
 ---
 
-## 🧪 Konvensi Pengujian (Testing)
-- **Backend**: Unit test di Go (`go test`).
-- **Frontend**: Unit test dengan Jest (`npm run test`).
+## 🧪 Testing Conventions
+- **Backend**: Unit tests in Go (`go test`).
+- **Frontend**: Unit tests with Jest (`npm run test`).
 - **Smart Contract**: Hardhat Test (`npx hardhat test`).
-- **E2E & QA**: Playwright & skenario automasi diletakkan di folder `e2e-qa/`.
+- **E2E & QA**: Playwright & automation scenarios live in the `e2e-qa/` folder.
 
-Setiap fungsi/usecase baru di backend dan smart contract **WAJIB** memiliki unit test yang menutupi skenario sukses dan gagal.
-
----
-
-## 🚫 Batasan Mutlak (Do NOT)
-1. **JANGAN** hardcode *secrets*, URL database, API keys, atau RPC URLs di dalam kode. Selalu gunakan *Environment Variables* (rujuk `.env.example`).
-2. **JANGAN** mengabaikan penanganan `error` di Golang (selalu `return error`, jangan di-`panic`).
-3. **JANGAN** pernah mengubah saldo dompet pengguna (`wallet_repository.go`) tanpa menggunakan Database Transaction (`BeginTx`) dan perlindungan *Anti Race Condition* (`SELECT ... FOR UPDATE`).
-4. **JANGAN** mengubah file *smart contract* (`Counter.sol` / `TransactionLogger.sol`) menjadi fungsi *hold funds*. Logika pemrosesan pembayaran (Midtrans/RekberPay) mutlak dipegang backend.
+Every new function/usecase in the backend and smart contract **MUST** have a unit test covering both success and failure scenarios.
 
 ---
 
-## 🤝 Git Workflow & Kontribusi
-- Gunakan format **Conventional Commits**:
-  - `feat:` (Fitur baru)
-  - `fix:` (Perbaikan bug)
-  - `refactor:` (Refactoring tanpa mengubah fungsionalitas)
-  - `test:` (Penambahan pengujian)
-- Selalu branch dari `develop` (`feature/nama-fitur`).
+## 🚫 Absolute Restrictions (Do NOT)
+1. **DO NOT** hardcode *secrets*, database URLs, API keys, or RPC URLs in code. Always use *Environment Variables* (see `.env.example`).
+2. **DO NOT** ignore `error` handling in Golang (always `return error`, never `panic`).
+3. **DO NOT** ever mutate a user's wallet balance (`wallet_repository.go`) without using a Database Transaction (`BeginTx`) and *Anti Race-Condition* protection (`SELECT ... FOR UPDATE`).
+4. **DO NOT** turn the *smart contract* (`Counter.sol` / `TransactionLogger.sol`) into a *hold funds* function. Payment processing logic (Midtrans/RekberPay) is strictly handled by the backend.
+
+---
+
+## 🤝 Git Workflow & Contribution
+- Use the **Conventional Commits** format:
+  - `feat:` (new feature)
+  - `fix:` (bug fix)
+  - `refactor:` (refactoring without changing functionality)
+  - `test:` (adding tests)
+- Always branch from `develop` (`feature/feature-name`).

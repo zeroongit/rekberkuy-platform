@@ -1,21 +1,21 @@
 # CLAUDE.md — RekberKuy Platform
 
-Panduan ini membantu Claude AI memahami konteks, arsitektur, dan konvensi kode project RekberKuy. Baca seluruh file ini sebelum membuat perubahan apapun.
+This guide helps Claude AI understand the context, architecture, and code conventions of the RekberKuy project. Read this entire file before making any changes.
 
 ---
 
-## 🧠 Ringkasan Project
+## 🧠 Project Overview
 
-**RekberKuy** adalah platform rekening bersama (escrow) untuk transaksi **Barang**, **Jasa**, dan **Event**. Setiap transaksi dicatat sebagai audit log immutable di blockchain Avalanche. Platform ini juga menyediakan marketplace vendor untuk Event Organizer (EO).
+**RekberKuy** is a joint account (escrow) platform for **Goods**, **Services**, and **Event** transactions. Every transaction is recorded as an immutable audit log on the Avalanche blockchain. The platform also provides a vendor marketplace for Event Organizers (EO).
 
-**Tiga domain bisnis utama:**
-- Jual beli barang (fisik & digital)
-- Jasa (freelance / profesional)
-- Pengadaan event + vendor marketplace
+**Three core business domains:**
+- Buying and selling goods (physical & digital)
+- Services (freelance / professional)
+- Event procurement + vendor marketplace
 
 ---
 
-## 📁 Struktur Project
+## 📁 Project Structure
 
 ```
 rekberkuy-platform/
@@ -25,27 +25,28 @@ rekberkuy-platform/
 ├── blockchain/           # Smart contract audit log — Hardhat v3
 ├── e2e-qa/               # QA Automation & E2E testing
 ├── docs/
-│   └── usecase.md        # Use case & alur bisnis — BACA INI DULU
-├── .gitlab-ci.yml        # CI/CD pipeline
-└── CLAUDE.md             # ← kamu sedang membaca ini
+│   ├── general-user-guide.md              # Task-focused user guide
+│   └── application-flow-and-module-guide.md # Business flows, state machines & backend module map — READ THIS FIRST
+├── .github/workflows/ci.yml        # CI/CD pipeline
+└── CLAUDE.md             # ← you are reading this
 ```
 
 ---
 
-## ⚙️ Perintah Penting
+## ⚙️ Important Commands
 
 ### Backend (Go)
 ```bash
-cd apps/core-backend
+cd apps/core-service
 go mod tidy                        # Install dependencies
-go run ./cmd/server/main.go        # Jalankan server
-go test ./...                      # Jalankan semua test
+go run ./cmd/server/main.go        # Run server
+go test ./...                      # Run all tests
 go build -o bin/server ./cmd/server/main.go  # Build binary
 ```
 
 ### Frontend (Next.js)
 ```bash
-cd apps/web-frontend
+cd apps/dashboard-web
 npm install                        # Install dependencies
 npm run dev                        # Dev server (localhost:3000)
 npm run build                      # Production build
@@ -57,9 +58,9 @@ npm run test                       # Unit test (Jest)
 ```bash
 cd blockchain
 npm install
-npx hardhat compile                # Kompilasi smart contract
-npx hardhat test                   # Jalankan test kontrak
-npx hardhat node                   # Jalankan local blockchain (port 8545)
+npx hardhat compile                # Compile smart contract
+npx hardhat test                   # Run contract tests
+npx hardhat node                   # Run local blockchain (port 8545)
 npx hardhat ignition deploy ./ignition/modules/Counter.ts --network localhost
 ```
 
@@ -67,169 +68,191 @@ npx hardhat ignition deploy ./ignition/modules/Counter.ts --network localhost
 ```bash
 cd e2e-qa
 npm install
-npm run test                       # Jalankan semua skenario QA
+npm run test                       # Run all QA scenarios
 ```
 
 ---
 
-## 🏛️ Arsitektur Backend (Clean Architecture)
+## 🏛️ Backend Architecture (Clean Architecture)
 
-Layer berurutan — **jangan skip layer, jangan import terbalik**:
+Layers are sequential — **do not skip layers, do not import in reverse**:
 
 ```
-delivery/http/  →  usecase/  →  repository/  →  domain/
+delivery/handlers/  →  usecase/  →  repository/  →  domain/
 ```
 
-| Layer | Lokasi | Tanggung Jawab |
-|-------|--------|----------------|
-| `domain/` | `internal/domain/` | Struct entity & interface contract |
-| `repository/` | `internal/repository/` | Akses database — implementasi interface domain |
-| `usecase/` | `internal/usecase/` | Business logic murni — tidak boleh tahu soal HTTP |
-| `delivery/` | `internal/delivery/http/` | Handler HTTP — hanya parsing request & response |
+| Layer | Location | Responsibility |
+|-------|----------|----------------|
+| `domain/` | `internal/domain/` | Entity structs & interface contracts |
+| `repository/` | `internal/repository/` | Database access — implementation of domain interfaces |
+| `usecase/` | `internal/usecase/` | Pure business logic — must not know about HTTP |
+| `delivery/` | `internal/delivery/handlers/` | HTTP handlers — only request parsing & response |
 
-### Domain yang sudah ada
-- `user.go` — Entity pengguna & struct CRM Loyalty Tiering (target GMV/streak)
-- `transaction.go` — Entity transaksi escrow utama & state status
-- `finance.go` — Entity penampung hasil kalkulasi audit, fee platform, bonus, dan auto-refund
-- `vendor.go` — Entity profil vendor mitra & skema alokasi anggaran event
-- `wallet.go` — Entity dompet, mutasi saldo RekberPay, & log transaksi logistik
+### Existing domain files (`internal/domain/`)
+- `auth.go` — JWT custom claims & auth contract
+- `profile.go` — `UserProfile`, `VendorProfile`, `CRMLoyalty` (tiering), `KYCSubmission`
+- `transaction.go` — escrow `Transaction` entity, universal status state machine, milestones, event vendor payouts/allocations
+- `finance.go` — `PlatformFinance`, `EventAuditResult`, fee constants
+- `wallet.go` — `RekberPayWallet`, ledger mutations, idempotency contract
+- `category.go` — 3-tier taxonomy (Goods / Services / Events / Vendors)
+- `dispute.go` — dispute entity (reserved for the dispute-resolution module)
+- `services.go` — external service ports: `FraudClient`, `Relayer`, `MidtransClient`
+- `worker.go` — background worker contract (`CRMWorker`)
+- `unit_of_work.go` — transactional boundary (`UnitOfWork` + `TxStores`)
 
-### Aturan dependency
-- `domain/` tidak boleh import package lain dalam project
-- `usecase/` boleh import `domain/` saja
-- `repository/` boleh import `domain/` saja
-- `delivery/` boleh import `usecase/` dan `domain/`
+### Dependency rules
+- `domain/` must not import any other package within the project
+- `usecase/` may only import `domain/`
+- `repository/` may only import `domain/`
+- `delivery/` may import `usecase/` and `domain/`
 
 ---
 
-## 🌐 Arsitektur Frontend (Next.js v16)
+## 🌐 Frontend Architecture (Next.js v16)
 
-- Gunakan **App Router** (`src/app/`) — bukan Pages Router
-- Komponen UI dari **Shadcn/UI** — jangan buat komponen UI dari scratch jika sudah ada di Shadcn
-- Styling hanya dengan **Tailwind CSS** — tidak pakai CSS module atau styled-components
-- Semua komponen harus **TypeScript** — tidak ada file `.js` atau `.jsx`
-- Gunakan **Server Components** by default; tambahkan `"use client"` hanya jika benar-benar butuh interaktivitas
+- Use **App Router** (`src/app/`) — not Pages Router
+- UI components from **Shadcn/UI** — do not build UI components from scratch if they already exist in Shadcn
+- Styling only with **Tailwind CSS** — no CSS modules or styled-components
+- All components must be **TypeScript** — no `.js` or `.jsx` files
+- Use **Server Components** by default; add `"use client"` only when interactivity is truly required
 
 ---
 
-## ⛓️ Blockchain — Peran & Batasan
+## ⛓️ Blockchain — Role & Limitations
 
-> **PENTING:** Smart contract di folder `blockchain/` berfungsi **HANYA sebagai audit log transaksi**. Bukan untuk menyimpan dana, bukan escrow on-chain, bukan logika bisnis.
+> **IMPORTANT:** The smart contract in the `blockchain/` folder functions **ONLY as a transaction audit log**. Not for holding funds, not on-chain escrow, not business logic.
 
-Mengingat pembayaran dengan kripto tidak legal di Indonesia, platform ini menerapkan metode **Gasless Transaction**. Artinya, pengguna sama sekali tidak berinteraksi langsung dengan blockchain. Backend bertindak sebagai *Relayer* yang mengeksekusi dan membayarkan *gas fee* secara otomatis di latar belakang untuk setiap pencatatan transaksi yang sudah selesai.
+Given that crypto payments are not legal in Indonesia, this platform implements a **Gasless Transaction** approach. This means users do not interact directly with the blockchain at all. The Backend acts as a *Relayer* that executes and pays the *gas fee* automatically in the background for every completed transaction recording.
 
-**Yang boleh dilakukan smart contract:**
-- Mencatat hash/ID transaksi yang sudah selesai
-- Menyimpan timestamp & status akhir transaksi
-- Emit event untuk keperluan indexing & transparansi
+**What the smart contract may do:**
+- Record the hash/ID of completed transactions
+- Store the timestamp & final status of transactions
+- Emit events for indexing & transparency purposes
 
-**Yang TIDAK boleh ada di smart contract:**
-- Logika escrow atau penahan dana
-- Logika bisnis apapun (kalkulasi fee, validasi, dll)
-- Data sensitif pengguna
+**What must NOT be in the smart contract:**
+- Escrow logic or fund holding
+- Any business logic (fee calculations, validation, etc.)
+- Sensitive user data
 
-**Network target:** Avalanche C-Chain (Fuji Testnet untuk development, Mainnet untuk production)
+**Target network:** Avalanche C-Chain (Fuji Testnet for development, Mainnet for production)
 
 ---
 
 ## 🧪 Testing
 
-| Jenis Test | Tool | Lokasi |
-|------------|------|--------|
-| Unit test frontend | Jest | `apps/web-frontend/__tests__/` |
+| Test Type | Tool | Location |
+|------------|------|----------|
+| Frontend unit test | Jest | `apps/dashboard-web/__tests__/` |
 | E2E & QA Automation | Playwright | `e2e-qa/` |
 | API test | Postman | `docs/api/` (collection) |
 | Smart contract test | Hardhat | `blockchain/test/` |
-| Backend unit test | Go test | `apps/core-backend/**/*_test.go` |
+| Backend unit test | Go test | `apps/core-service/**/*_test.go` |
 
-**Aturan testing:**
-- Setiap usecase baru **wajib** punya unit test
-- Setiap endpoint baru **wajib** masuk koleksi Postman
-- Alur transaksi utama (barang/jasa/event) **wajib** punya skenario E2E di `e2e-qa/`
+**Testing rules:**
+- Every new usecase **must** have a unit test
+- Every new endpoint **must** be added to the Postman collection
+- Main transaction flows (goods/services/event) **must** have E2E scenarios in `e2e-qa/`
 
 ---
 
-## 📐 Konvensi Kode
+## 📐 Code Conventions
 
 ### Go (Backend)
-- Nama file: `snake_case` (contoh: `transaction_usecase.go`)
-- Nama struct & interface: `PascalCase`
-- Nama fungsi ekspor: `PascalCase`, fungsi internal: `camelCase`
-- Error handling: selalu return `error`, jangan `panic` kecuali di `main.go`
-- Interface didefinisikan di `domain/`, diimplementasikan di `repository/` atau `usecase/`
-- Gunakan `context.Context` sebagai parameter pertama di semua fungsi yang menyentuh I/O
+- File names: `snake_case` (example: `transaction_usecase.go`)
+- Struct & interface names: `PascalCase`
+- Exported function names: `PascalCase`, internal functions: `camelCase`
+- Error handling: always return `error`, do not `panic` except in `main.go`
+- Interfaces are defined in `domain/`, implemented in `repository/` or `usecase/`
+- Use `context.Context` as the first parameter in all functions that touch I/O
 
 ```go
-// ✅ Benar
+// ✅ Correct
 func (u *transactionUsecase) CreateTransaction(ctx context.Context, req domain.Transaction) (domain.Transaction, error) {}
 
-// ❌ Salah — tidak ada context, tidak return error
+// ❌ Wrong — no context, no error return
 func CreateTx(req domain.Transaction) domain.Transaction {}
 ```
 
 ### TypeScript (Frontend)
-- Nama file komponen: `PascalCase.tsx` (contoh: `TransactionCard.tsx`)
-- Nama file utility/hook: `camelCase.ts` (contoh: `useTransaction.ts`)
-- Selalu definisikan tipe — hindari `any`
-- Gunakan `interface` untuk props komponen, `type` untuk union/intersection
-- Nama komponen harus deskriptif dan mencerminkan domain bisnis
+- Component file names: `PascalCase.tsx` (example: `TransactionCard.tsx`)
+- Utility/hook file names: `camelCase.ts` (example: `useTransaction.ts`)
+- Always define types — avoid `any`
+- Use `interface` for component props, `type` for union/intersection
+- Component names must be descriptive and reflect the business domain
 
 ```tsx
-// ✅ Benar
+// ✅ Correct
 interface TransactionCardProps {
   transactionId: string
   status: 'pending' | 'completed' | 'disputed'
 }
 
-// ❌ Salah
+// ❌ Wrong
 const Card = ({ data }: { data: any }) => {}
 ```
 
 ### Solidity (Smart Contract)
-- Fungsi hanya untuk **write** (catat transaksi) dan **read** (baca log)
-- Emit event setiap ada pencatatan baru
-- Jangan gunakan `mapping` yang menyimpan data sensitif
+- Functions are only for **write** (record transaction) and **read** (read log)
+- Emit an event for every new recording
+- Do not use `mapping` that stores sensitive data
 
 ---
 
 ## 🔑 Environment Variables
 
-Jangan pernah hardcode secrets. Semua config ada di `apps/core-backend/.env`.
+Never hardcode secrets. All config is in `apps/core-service/.env`.
 
-Variabel krusial yang harus ada:
-- `DATABASE_URL` — koneksi PostgreSQL via Supabase
-- `SUPABASE_SERVICE_ROLE_KEY` — jangan expose ke frontend
-- `DEPLOYER_PRIVATE_KEY` — private key wallet deployment blockchain, **sangat sensitif**
-- `AVALANCHE_RPC_URL` — endpoint RPC Avalanche
-
----
-
-## 🚫 Hal yang Tidak Boleh Dilakukan
-
-- ❌ Jangan commit file `.env` ke repository
-- ❌ Jangan hardcode URL, port, atau credentials di dalam kode
-- ❌ Jangan tambahkan logika bisnis di layer `delivery/http/`
-- ❌ Jangan import `usecase/` dari `domain/` (melanggar clean architecture)
-- ❌ Jangan gunakan `any` di TypeScript kecuali benar-benar tidak ada pilihan lain
-- ❌ Jangan tambahkan logika escrow atau penyimpanan dana ke smart contract
-- ❌ Jangan push langsung ke branch `main` atau `develop` — selalu via Merge Request
+Crucial variables that must exist:
+- `DATABASE_URL` — PostgreSQL connection via Supabase
+- `SUPABASE_SERVICE_ROLE_KEY` — do not expose to the frontend
+- `DEPLOYER_PRIVATE_KEY` — blockchain deployment wallet private key, **highly sensitive**
+- `AVALANCHE_RPC_URL` — Avalanche RPC endpoint
 
 ---
 
-## ✅ Checklist Sebelum Membuat Perubahan
+## 🚫 Things You Must Not Do
 
-Sebelum menulis kode, pastikan kamu sudah:
-- [ ] Membaca `docs/usecase.md` untuk memahami alur bisnis yang relevan
-- [ ] Memahami layer mana yang perlu diubah (domain / repository / usecase / delivery)
-- [ ] Tidak melanggar aturan dependency antar layer
-- [ ] Menyiapkan test untuk kode baru
-- [ ] Menggunakan nama yang konsisten dengan domain bisnis yang sudah ada
-@
+- ❌ Do not commit `.env` files to the repository
+- ❌ Do not hardcode URLs, ports, or credentials in code
+- ❌ Do not add business logic in the `delivery/handlers/` layer
+- ❌ Do not import `usecase/` from `domain/` (violates clean architecture)
+- ❌ Do not use `any` in TypeScript unless there is truly no other choice
+- ❌ Do not add escrow logic or fund holding to the smart contract
+- ❌ Do not push directly to the `main` or `develop` branch — always via Merge Request
+
 ---
 
-## 📚 Referensi Penting
+## ✅ Checklist Before Making Changes
 
-- Alur bisnis & use case: [`docs/usecase.md`](./docs/usecase.md)
-- Domain model: [`apps/core-backend/internal/domain/`](./apps/core-backend/internal/domain/)
-- Panduan frontend: [`apps/web-frontend/CLAUDE.md`](./apps/web-frontend/CLAUDE.md)
-- CI/CD pipeline: [`.gitlab-ci.yml`](./.gitlab-ci.yml)
+Before writing code, make sure you have:
+- [ ] Read `docs/application-flow-and-module-guide.md` to understand the relevant business flow
+- [ ] Understood which layer needs to change (domain / repository / usecase / delivery)
+- [ ] Not violated the dependency rules between layers
+- [ ] Prepared tests for the new code
+- [ ] Used names consistent with the existing business domain
+
+---
+
+## 📚 Important References
+
+- Business flows, state machines & module map: [`docs/application-flow-and-module-guide.md`](./docs/application-flow-and-module-guide.md)
+- General user guide: [`docs/general-user-guide.md`](./docs/general-user-guide.md)
+- Domain model: [`apps/core-service/internal/domain/`](./apps/core-service/internal/domain/)
+- Frontend app: [`apps/dashboard-web/`](./apps/dashboard-web/)
+- CI/CD pipeline: [`.github/workflows/ci.yml`](./.github/workflows/ci.yml)
+
+---
+
+## Agent skills
+
+### Issue tracker
+
+Issues are tracked as GitHub issues in this repo (via the `gh` CLI). See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Five canonical triage roles map 1:1 to GitHub labels of the same name. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context — one `CONTEXT.md` + `docs/adr/` at the repo root. See `docs/agents/domain.md`.

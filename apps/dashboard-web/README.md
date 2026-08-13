@@ -11,6 +11,13 @@ Modul ini adalah antarmuka web modern (Frontend) untuk pengguna dan admin **Rekb
 
 > **Catatan Penting:** Sebagian besar komponen Next.js di proyek ini berjalan sebagai **Server Components** secara *default*. Hanya gunakan direktif `"use client"` jika komponen benar-benar membutuhkan state atau hook React (seperti `useState`, `onClick`, `useEffect`).
 
+## 📌 Status Implementasi
+
+Modul ini masih berupa **scaffold default** Next.js v16 (`src/app/layout.tsx` & `page.tsx` bawaan
+`create-next-app`). Belum ada halaman produk (landing, auth, dashboard, transaksi, vendor) yang
+dibangun. Prioritas Phase 1 sesuai [`ROADMAP.md`](../../ROADMAP.md): landing page, halaman auth,
+dashboard ringkasan, dan alur transaksi Barang end-to-end.
+
 ## 🚀 Cara Menjalankan Lokal
 
 1. **Install Dependensi:**

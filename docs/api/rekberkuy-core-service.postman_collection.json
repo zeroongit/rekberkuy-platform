@@ -1,0 +1,217 @@
+{
+  "info": {
+    "name": "RekberKuy Core Service",
+    "_postman_id": "f3a1c2d4-0001-4b6a-9c2d-auth0000001",
+    "description": "RekberKuy Core Service REST API. Base URL is controlled by the `base_url` collection variable (default http://localhost:8080). Grows as endpoints are added.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "base_url",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "access_token",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "user_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "payout_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "transaction_id",
+      "value": "",
+      "type": "string"
+    },
+    {
+      "key": "dispute_id",
+      "value": "",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Auth",
+      "description": "Credential-based registration and login. Login stores the JWT into the access_token collection variable via a test script.",
+      "item": [
+        {
+          "name": "Register",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/api/v1/auth/register",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane@example.com\",\n  \"username\": \"jane\",\n  \"password\": \"password123\",\n  \"full_name\": \"Jane Doe\"\n}"
+            },
+            "description": "Register a new USER, hash the password (bcrypt), and auto-create a zero-balance RekberPay wallet. Passwords must be >= 8 chars. 409 on duplicate email."
+          },
+          "response": []
+        },
+        {
+          "name": "Login",
+          "event": [
+            {
+              "listen": "test",
+              "script": {
+                "type": "text/javascript",
+                "exec": [
+                  "var json = pm.response.json();",
+                  "if (json && json.access_token) {",
+                  "  pm.collectionVariables.set('access_token', json.access_token);",
+                  "}"
+                ]
+              }
+            }
+          ],
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/api/v1/auth/login",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"email\": \"jane@example.com\",\n  \"password\": \"password123\"\n}"
+            },
+            "description": "Verify credentials and return a Bearer JWT. On success the token is saved to the access_token variable for subsequent requests. 401 on bad credentials."
+          },
+          "response": []
+        },
+        {
+          "name": "Dev Token-Test (dev only)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "url": "{{base_url}}/api/v1/users/token-test",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"user_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"username\": \"u\",\n  \"role\": \"USER\"\n}"
+            },
+            "description": "DEV-ONLY backdoor: mints a real JWT for any user id / role without a password. Route is registered only when APP_ENV != production."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Reviews",
+      "description": "Buyer → counterparty reviews, left after a transaction is RELEASED. The CRM worker aggregates these into merchant tiers.",
+      "item": [
+        {
+          "name": "Create Review",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/v1/reviews",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transaction_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"rating\": 5,\n  \"comment\": \"Smooth deal\"\n}"
+            },
+            "description": "Leave a 1–5 rating on the seller/service provider of a RELEASED transaction. Only the transaction's buyer may review. One review per transaction per buyer."
+          },
+          "response": []
+        },
+        {
+          "name": "List Reviews for a User",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/users/{{user_id}}/reviews",
+            "description": "List all reviews a user (seller/provider) has received."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Disbursement",
+      "description": "Admin-triggered external vendor disbursement (ADR-0002). The bank transfer happens out-of-band; these calls only record completion.",
+      "item": [
+        {
+          "name": "Mark Vendor Payout Disbursed",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/v1/transactions/events/payouts/{{payout_id}}/disburse",
+            "description": "ADMIN only. Marks a PENDING_DISBURSEMENT external vendor payout as DISBURSED after the Admin completes the bank transfer. Refused on any other status."
+          },
+          "response": []
+        }
+      ]
+    },
+    {
+      "name": "Disputes",
+      "description": "Admin-mediated dispute resolution (ADR-0003). Either party raises while funds are locked; an Admin acknowledges then resolves with a binding outcome that moves escrow money atomically.",
+      "item": [
+        {
+          "name": "Open Dispute",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/v1/disputes",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"transaction_id\": \"{{transaction_id}}\",\n  \"reason\": \"Item not as described\",\n  \"evidence_url\": \"https://evidence.example/img.png\"\n}"
+            },
+            "description": "USER (buyer or seller). Raises a dispute on a FUNDS_LOCKED transaction, freezing it (FUNDS_LOCKED -> DISPUTED). One dispute per transaction. The other party becomes the target."
+          },
+          "response": []
+        },
+        {
+          "name": "Acknowledge Dispute",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/v1/disputes/{{dispute_id}}/acknowledge",
+            "description": "ADMIN only. Moves a dispute OPEN -> UNDER_REVIEW (Admin takes ownership)."
+          },
+          "response": []
+        },
+        {
+          "name": "Resolve Dispute",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" },
+              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+            ],
+            "url": "{{base_url}}/api/v1/disputes/{{dispute_id}}/resolve",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"outcome\": \"REFUND_BUYER\",\n  \"summary\": \"Buyer was right; item not as described\"\n}"
+            },
+            "description": "ADMIN only. Binding outcome: REFUND_BUYER (credits buyer the full amount, transaction -> REFUNDED, platform takes no fee) or RELEASE_TO_SELLER (credits seller AmountNet, transaction -> RELEASED). Runs atomically inside the UnitOfWork."
+          },
+          "response": []
+        },
+        {
+          "name": "Get Dispute",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": "{{base_url}}/api/v1/disputes/{{dispute_id}}",
+            "description": "Party or Admin. Fetch a dispute's current state and outcome."
+          },
+          "response": []
+        }
+      ]
+    }
+  ]
+}
