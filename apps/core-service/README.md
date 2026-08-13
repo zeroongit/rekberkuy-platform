@@ -5,10 +5,10 @@ This module is the main backend for the **RekberKuy** platform, built with **Go 
 ## 🏗️ Architecture (Clean Architecture)
 This system is very strict in separating concerns through the following hierarchical layers:
 
-1. **`delivery/http/`**: REST API handlers (Gin/Echo/Chi). Responsible for processing HTTP requests, initial payload validation, and returning JSON responses.
-2. **`usecase/`**: Contains pure business logic (e.g., escrow flows, `finance_calculator`).
-3. **`repository/`**: Database access layer (PostgreSQL via Supabase & Redis).
-4. **`domain/`**: Definitions of independent *structs* (Entities) and *interfaces* (Contracts).
+1. **`internal/delivery/handlers/`**: REST API handlers (Gin). HTTP request parsing, payload validation, and JSON responses — no business logic lives here.
+2. **`internal/usecase/`**: Pure business logic (escrow flows, `finance_calculator`, dispute resolution).
+3. **`internal/repository/`**: Database access (PostgreSQL via Supabase, Redis) — implements the `domain` interfaces.
+4. **`internal/domain/`**: Independent entity *structs* and *interface* contracts. Imports nothing else within the project.
 
 > **Golden Rule:** An outer *layer* may only call a deeper *layer*. `domain` must not import packages from any *layer*.
 
@@ -19,20 +19,26 @@ This system is very strict in separating concerns through the following hierarch
 
 ## 🚀 How to Run Locally
 
-1. **Environment Preparation**: Make sure `.env` is configured based on `.env.example`.
+1. **Environment Preparation**: copy `.env.example` to `.env` and fill in real values (`DATABASE_URL` is required).
 2. **Install Dependencies**:
    ```bash
    go mod tidy
    ```
-3. **Run the Server**:
+3. **Apply Database Migrations** (required before the first run — the server no longer auto-creates tables):
+   ```bash
+   go run ./cmd/migrate/main.go up
+   ```
+   The schema is managed by [golang-migrate](https://github.com/golang-migrate/migrate) under `db/migrations/`.
+   Run `go run ./cmd/migrate/main.go help` for `down` / `fresh` / `steps` / `force` / `version`.
+4. **Run the Server**:
    ```bash
    go run ./cmd/server/main.go
    ```
-4. **Build Binary**:
+5. **Build Binary**:
    ```bash
    go build -o bin/server ./cmd/server/main.go
    ```
-5. **Seed Database** (optional, for development/testing):
+6. **Seed Database** (optional, for development/testing):
    ```bash
    go run ./cmd/seed/main.go
    ```
@@ -48,6 +54,7 @@ This system is very strict in separating concerns through the following hierarch
 - ✅ Middleware: JWT auth (RBAC), config-driven CORS, idempotency key (anti double-spending)
 - ✅ Worker: `auto_release_worker` (auto-release escrow) & `crm_worker` (Loyalty Tiering evaluation)
 - ✅ Database seeder (`cmd/seed/main.go`)
+- ✅ Versioned SQL migrations via golang-migrate (`db/migrations/` + `cmd/migrate`); GORM AutoMigrate retired
 - ✅ Adapters: `internal/midtrans` (Snap + signature), `internal/relayer` (go-ethereum gasless), `internal/fraud` (HTTP → backend-ai). Each falls back to a stub when its external service is not configured.
 - ✅ Unit tests (`*_test.go`) across usecases, repositories (sqlmock), handlers, adapters, and config
 - 🚧 `backend-ai` (Python KYC/fraud) and the `TransactionLogger` contract are out of tree; the Go adapters call stubs until those services exist
