@@ -9,7 +9,7 @@ Python 3.11 / FastAPI microservice providing **KYC + fraud-risk scoring** via th
 | Method | Path | Purpose |
 |--------|------|---------|
 | `POST` | `/api/v1/fraud/score` | Score a transaction's fraud risk (canonical) |
-| `POST` | `/fraud/analyze` | Legacy alias of the above (the Go adapter still calls this) |
+| `POST` | `/fraud/analyze` | Legacy alias of the above (kept for backward compatibility; `core-service` calls the canonical path) |
 | `POST` | `/api/v1/kyc/verify` | Score a KYC submission (ID card vs. selfie) |
 | `GET`  | `/healthz` | Liveness probe (+ reports whether Groq is configured) |
 | `GET`  | `/docs` | Swagger UI |
