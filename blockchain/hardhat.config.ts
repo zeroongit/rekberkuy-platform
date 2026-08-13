@@ -34,5 +34,12 @@ export default defineConfig({
       url: configVariable("SEPOLIA_RPC_URL"),
       accounts: [configVariable("SEPOLIA_PRIVATE_KEY")],
     },
+    avalancheFuji: {
+      type: "http",
+      chainType: "l1",
+      chainId: 43113,
+      url: configVariable("AVALANCHE_RPC_URL"),
+      accounts: [configVariable("DEPLOYER_PRIVATE_KEY")],
+    },
   },
 });
