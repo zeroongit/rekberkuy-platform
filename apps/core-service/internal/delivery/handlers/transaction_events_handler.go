@@ -1,9 +1,9 @@
 package handlers
 
 import (
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"rekberkuy/core-service/internal/usecase"
-	"github.com/gin-gonic/gin"
 )
 
 type TransactionEventsHandler struct {
@@ -27,7 +27,7 @@ type LockEventsRequest struct {
 func (h *TransactionEventsHandler) LockFundsEventsHandler(c *gin.Context) {
 	var req LockEventsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Payload tidak valid: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payload: " + err.Error()})
 		return
 	}
 
@@ -39,7 +39,7 @@ func (h *TransactionEventsHandler) LockFundsEventsHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"message": "Escrow event berhasil diinisialisasi", "data": tx})
+	c.JSON(http.StatusCreated, gin.H{"message": "Event escrow successfully initialized", "data": tx})
 }
 
 func (h *TransactionEventsHandler) ProcessEventVendorPayoutHandler(c *gin.Context) {
@@ -55,7 +55,7 @@ func (h *TransactionEventsHandler) ProcessEventVendorPayoutHandler(c *gin.Contex
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Dana escrow event berhasil dipecah ke seluruh vendor lapangan!"})
+	c.JSON(http.StatusOK, gin.H{"message": "Event escrow funds successfully split to all field vendors!"})
 }
 
 func (h *TransactionEventsHandler) ReleaseEventMilestoneHandler(c *gin.Context) {
@@ -71,5 +71,5 @@ func (h *TransactionEventsHandler) ReleaseEventMilestoneHandler(c *gin.Context) 
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Dana termin event berbasis invoice berhasil dicairkan!"})
+	c.JSON(http.StatusOK, gin.H{"message": "Invoice-based event milestone funds successfully disbursed!"})
 }

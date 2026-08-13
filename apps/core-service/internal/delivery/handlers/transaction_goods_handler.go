@@ -1,9 +1,9 @@
 package handlers
 
 import (
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"rekberkuy/core-service/internal/usecase"
-	"github.com/gin-gonic/gin"
 )
 
 type TransactionGoodsHandler struct {
@@ -28,7 +28,7 @@ type LockGoodsRequest struct {
 func (h *TransactionGoodsHandler) LockFundsGoodsHandler(c *gin.Context) {
 	var req LockGoodsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Payload tidak valid: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payload: " + err.Error()})
 		return
 	}
 
@@ -40,7 +40,7 @@ func (h *TransactionGoodsHandler) LockFundsGoodsHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"message": "Escrow barang diinisialisasi", "data": tx})
+	c.JSON(http.StatusCreated, gin.H{"message": "Goods escrow initialized", "data": tx})
 }
 
 func (h *TransactionGoodsHandler) ReleaseGoodsHandler(c *gin.Context) {
@@ -56,5 +56,5 @@ func (h *TransactionGoodsHandler) ReleaseGoodsHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Dana escrow barang dikreditkan ke dompet penjual"})
+	c.JSON(http.StatusOK, gin.H{"message": "Goods escrow funds credited to seller wallet"})
 }

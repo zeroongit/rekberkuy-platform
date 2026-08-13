@@ -10,24 +10,31 @@ import (
 )
 
 type TransactionGoodsUsecase struct {
+	uow             domain.UnitOfWork
 	transactionRepo domain.TransactionRepository
-	walletRepo      domain.WalletRepository
-	financeRepo     domain.FinanceRepository
 	financeCalc     *FinanceCalculator
+	fraudClient     domain.FraudClient
+	relayer         domain.Relayer
 }
 
-func NewTransactionGoodsUsecase(tr domain.TransactionRepository, wr domain.WalletRepository, fr domain.FinanceRepository, fc *FinanceCalculator) *TransactionGoodsUsecase {
+func NewTransactionGoodsUsecase(uow domain.UnitOfWork, tr domain.TransactionRepository, fc *FinanceCalculator, fraud domain.FraudClient, relayer domain.Relayer) *TransactionGoodsUsecase {
 	return &TransactionGoodsUsecase{
+		uow:             uow,
 		transactionRepo: tr,
-		walletRepo:      wr,
-		financeRepo:     fr,
 		financeCalc:     fc,
+		fraudClient:     fraud,
+		relayer:         relayer,
 	}
 }
 
 func (u *TransactionGoodsUsecase) LockFundsGoods(ctx context.Context, buyerID, sellerID string, amountBase int64, isRekberPay bool, sellerTier string, shippingFee int64, paymentMethod, idempotencyKey string) (*domain.Transaction, error) {
 	if amountBase <= 0 {
-		return nil, errors.New("nominal transaksi barang harus lebih besar dari nol")
+		return nil, errors.New("goods transaction amount must be greater than zero")
+	}
+
+	// Member cap: a regular USER may sell up to MaxMemberEventLimit per transaction.
+	if err := enforceSellerLimit(ctx, u.uow, sellerID, amountBase); err != nil {
+		return nil, err
 	}
 
 	buyerFee := u.financeCalc.CalculateBuyerServiceFee(domain.TypeGoods, amountBase, isRekberPay, sellerTier)
@@ -35,7 +42,7 @@ func (u *TransactionGoodsUsecase) LockFundsGoods(ctx context.Context, buyerID, s
 
 	amountGross := amountBase + buyerFee + shippingFee
 	amountNet := amountBase - sellerFee
-	midtransOrderID := fmt.Sprintf("REKBERKUY-GOODS-%s", uuid.New().String()[:8])
+	midtransOrderID := fmt.Sprintf("%s%s", domain.OrderPrefixGoods, uuid.New().String()[:8])
 
 	txMaster := &domain.Transaction{
 		ID:              uuid.New().String(),
@@ -55,22 +62,25 @@ func (u *TransactionGoodsUsecase) LockFundsGoods(ctx context.Context, buyerID, s
 	}
 
 	if err := u.transactionRepo.CreateTransaction(ctx, txMaster); err != nil {
-		return nil, fmt.Errorf("gagal mencatat transaksi escrow barang: %w", err)
+		return nil, fmt.Errorf("failed to record goods escrow transaction: %w", err)
 	}
 	return txMaster, nil
 }
 
-func (u *TransactionGoodsUsecase) ConfirmPaymentGoods(ctx context.Context, transactionID string) error {
-	return u.walletRepo.ExecuteInTransaction(ctx, func(txRepo domain.WalletRepository) error {
-		tx, err := u.transactionRepo.GetTransactionByID(ctx, transactionID)
+func (u *TransactionGoodsUsecase) ConfirmPaymentGoods(ctx context.Context, orderID string) error {
+	return u.uow.Do(ctx, func(ctx context.Context, stores domain.TxStores) error {
+		tx, err := stores.Transactions.GetTransactionByMidtransOrderID(ctx, orderID)
 		if err != nil {
 			return err
 		}
 		if tx.Status != domain.StatusWaitingPayment {
-			return fmt.Errorf("transaksi tidak dapat diproses: status saat ini adalah %s", tx.Status)
+			// Idempotent replay: Midtrans retries webhooks aggressively. If the payment
+			// was already applied (FUNDS_LOCKED or any later state), acknowledge as a
+			// no-op success instead of erroring (which would trigger more retries).
+			return nil
 		}
 
-		descMsg := fmt.Sprintf("Pembayaran sukses untuk transaksi escrow barang #%s", tx.ID)
+		descMsg := fmt.Sprintf("Payment success for goods escrow transaction #%s", tx.ID)
 		walletTxLog := &domain.RekberPayTransaction{
 			ID:          uuid.New().String(),
 			WalletID:    tx.BuyerID,
@@ -81,43 +91,71 @@ func (u *TransactionGoodsUsecase) ConfirmPaymentGoods(ctx context.Context, trans
 			Description: &descMsg,
 		}
 
-		if err := txRepo.UpdateBalanceTx(ctx, walletTxLog, -tx.AmountGross); err != nil {
-			return fmt.Errorf("gagal mendebet saldo pembeli: %w", err)
+		if err := stores.Wallets.UpdateBalanceTx(ctx, walletTxLog, -tx.AmountGross); err != nil {
+			return fmt.Errorf("failed to debit buyer balance: %w", err)
 		}
-		if err := u.transactionRepo.UpdateTransactionStatus(ctx, tx.ID, domain.StatusFundsLocked); err != nil {
-			return fmt.Errorf("gagal merubah state transaksi barang menjadi FUNDS_LOCKED: %w", err)
+		if err := stores.Transactions.UpdateTransactionStatus(ctx, tx.ID, domain.StatusFundsLocked); err != nil {
+			return fmt.Errorf("failed to change goods transaction state to FUNDS_LOCKED: %w", err)
 		}
-		return u.financeRepo.UpdatePlatformFinance(ctx, tx.AmountGross, 0, 0)
+		return stores.Finance.UpdatePlatformFinance(ctx, tx.AmountGross, 0, 0)
 	})
 }
 
 func (u *TransactionGoodsUsecase) ReleaseFundsGoods(ctx context.Context, transactionID string) error {
-	return u.walletRepo.ExecuteInTransaction(ctx, func(txRepo domain.WalletRepository) error {
-		tx, err := u.transactionRepo.GetTransactionByID(ctx, transactionID)
+	// 1. Pre-check (read outside the transactional boundary) for fraud evaluation.
+	tx, err := u.transactionRepo.GetTransactionByID(ctx, transactionID)
+	if err != nil {
+		return err
+	}
+	if tx.Status != domain.StatusFundsLocked {
+		return fmt.Errorf("funds failed to be released: transaction status must be FUNDS_LOCKED, current status %s", tx.Status)
+	}
+
+	// 2. Fraud scoring (fail-closed by default: if screening is unavailable or
+	// flags risk, refuse the release — money safety over availability).
+	if u.fraudClient != nil {
+		_, isSafe, ferr := u.fraudClient.AnalyzeTransactionRisk(ctx, tx.BuyerID, tx.AmountGross)
+		if ferr != nil {
+			return fmt.Errorf("release of funds %s refused: fraud screening unavailable: %w", tx.ID, ferr)
+		}
+		if !isSafe {
+			return fmt.Errorf("release of funds %s refused: transaction flagged as high risk", tx.ID)
+		}
+	}
+
+	// 3. ACID mutation: credit seller + RELEASED state + cash reconciliation.
+	if err := u.uow.Do(ctx, func(ctx context.Context, stores domain.TxStores) error {
+		txLock, err := stores.Transactions.GetTransactionByID(ctx, transactionID)
 		if err != nil {
 			return err
 		}
-		if tx.Status != domain.StatusFundsLocked {
-			return fmt.Errorf("dana gagal dilepas: status transaksi wajib FUNDS_LOCKED, status saat ini %s", tx.Status)
+		if txLock.Status != domain.StatusFundsLocked {
+			return fmt.Errorf("funds failed to be released: transaction status must be FUNDS_LOCKED, current status %s", txLock.Status)
 		}
 
-		descMsg := fmt.Sprintf("Penerimaan dana dari penyelesaian transaksi barang #%s", tx.ID)
+		descMsg := fmt.Sprintf("Receipt of funds from goods transaction settlement #%s", txLock.ID)
 		sellerTxLog := &domain.RekberPayTransaction{
 			ID:          uuid.New().String(),
-			WalletID:    tx.SellerID,
+			WalletID:    txLock.SellerID,
 			Type:        domain.TxReceiveFunds,
 			Status:      domain.WalletStatusSuccess,
-			Amount:      tx.AmountNet,
+			Amount:      txLock.AmountNet,
 			AdminFee:    0,
 			Description: &descMsg,
 		}
 
-		if err := txRepo.UpdateBalanceTx(ctx, sellerTxLog, tx.AmountNet); err != nil {
-			return fmt.Errorf("gagal mengredit saldo ke dompet penjual: %w", err)
+		if err := stores.Wallets.UpdateBalanceTx(ctx, sellerTxLog, txLock.AmountNet); err != nil {
+			return fmt.Errorf("failed to credit funds to seller wallet: %w", err)
 		}
-		if err := u.transactionRepo.UpdateTransactionStatus(ctx, tx.ID, domain.StatusReleased); err != nil {
-			return fmt.Errorf("gagal merubah state transaksi menjadi RELEASED: %w", err)
+		if err := stores.Transactions.UpdateTransactionStatus(ctx, txLock.ID, domain.StatusReleased); err != nil {
+			return fmt.Errorf("failed to change transaction state to RELEASED: %w", err)
 		}
-		return u.financeRepo.UpdatePlatformFinance(ctx, -tx.AmountGross, tx.ServiceFee, tx.MidtransFee)
-	})
+		return stores.Finance.UpdatePlatformFinance(ctx, -txLock.AmountGross, txLock.ServiceFee, txLock.MidtransFee)
+	}); err != nil {
+		return err
+	}
+
+	// 4. Audit log on-chain (best-effort, async) — only hash + amount, no PII.
+	logAuditOnChain(u.relayer, u.transactionRepo, tx.ID, tx.BuyerID, tx.SellerID, tx.AmountGross)
+	return nil
 }

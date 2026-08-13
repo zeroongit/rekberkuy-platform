@@ -2,9 +2,13 @@ package main
 
 import (
 	"context"
+	"database/sql"
+	"errors"
 	"fmt"
 	"log"
 	"net/http"
+	"os/signal"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -15,6 +19,9 @@ import (
 	"rekberkuy/core-service/config"
 	"rekberkuy/core-service/internal/delivery/handlers"
 	"rekberkuy/core-service/internal/domain"
+	"rekberkuy/core-service/internal/fraud"
+	"rekberkuy/core-service/internal/midtrans"
+	"rekberkuy/core-service/internal/relayer"
 	"rekberkuy/core-service/internal/repository"
 	"rekberkuy/core-service/internal/usecase"
 	"rekberkuy/core-service/internal/worker"
@@ -23,128 +30,114 @@ import (
 func main() {
 	cfg := config.LoadConfig()
 
-	db, err := gorm.Open(postgres.Open(cfg.DatabaseURL), &gorm.Config{
+	db, err := gorm.Open(postgres.Open(cfg.Database.URL), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Info),
 	})
 	if err != nil {
-		log.Fatalf("❌ Gagal membuat koneksi database via GORM: %v", err)
+		log.Fatalf("❌ Failed to create database connection via GORM: %v", err)
 	}
 
 	sqlDB, err := db.DB()
 	if err != nil {
-		log.Fatalf("❌ Gagal mengambil instance sql.DB dari GORM: %v", err)
+		log.Fatalf("❌ Failed to get sql.DB instance from GORM: %v", err)
 	}
-	sqlDB.SetMaxIdleConns(10)
-	sqlDB.SetMaxOpenConns(100)
-	sqlDB.SetConnMaxLifetime(time.Hour)
+	sqlDB.SetMaxIdleConns(cfg.Database.MaxIdleConns)
+	sqlDB.SetMaxOpenConns(cfg.Database.MaxOpenConns)
+	sqlDB.SetConnMaxLifetime(time.Duration(cfg.Database.ConnMaxLifetimeHrs) * time.Hour)
 
-	fmt.Println("🚀 HORE! Backend Go GORM berhasil terhubung dengan aman ke Database Supabase!")
-
-	log.Println("Memulai proses AutoMigrate Tahap 1 (Tabel Klasifikasi, Master & Utama)...")
-	err = db.AutoMigrate(
-		&domain.GoodsCategory{},
-		&domain.GoodsSubCategory{},
-		&domain.GoodsSubSubCategory{},
-		&domain.ServiceCategory{},
-		&domain.ServiceSubCategory{},
-		&domain.ServiceSubSubCategory{},
-		&domain.EventCategory{},
-		&domain.EventSubCategory{},
-		&domain.EventSubSubCategory{},
-		&domain.VendorCategoryModel{},
-		&domain.VendorSubCategory{},   
-		&domain.VendorSubSubCategory{},
-		&domain.UserProfile{},
-		&domain.RekberPayWallet{},
-		&domain.PlatformFinance{},
-		&domain.IdempotencyRecord{},
-		&domain.CRMLoyalty{},
-		&domain.KYCSubmission{},
-		&domain.Transaction{},
-		&domain.RekberPayTransaction{},
-	)
-	if err != nil {
-		log.Fatalf("❌ CRITICAL: Proses AutoMigrate Tahap 1 Gagal: %v", err)
-	}
-
-	log.Println("Memulai proses AutoMigrate Tahap 2 (Tabel Eksekusi Relasional Terisolasi)...")
-	if err := db.AutoMigrate(&domain.Dispute{}); err != nil {
-		log.Fatalf("❌ Gagal migrasi Dispute: %v", err)
-	}
-	if err := db.AutoMigrate(&domain.VendorProfile{}); err != nil {
-		log.Fatalf("❌ Gagal migrasi VendorProfile: %v", err)
-	}
-	if err := db.AutoMigrate(&domain.ServiceMilestone{}); err != nil {
-		log.Fatalf("❌ Gagal migrasi ServiceMilestone: %v", err)
-	}
-	if err := db.AutoMigrate(&domain.TransactionGoods{}); err != nil {
-		log.Fatalf("❌ Gagal migrasi TransactionGoods: %v", err)
-	}
-	if err := db.AutoMigrate(&domain.TransactionServices{}); err != nil {
-		log.Fatalf("❌ Gagal migrasi TransactionServices: %v", err)
-	}
-	if err := db.AutoMigrate(&domain.TransactionEvents{}); err != nil {
-		log.Fatalf("❌ Gagal migrasi TransactionEvents: %v", err)
-	}
-	if err := db.AutoMigrate(&domain.EventOfficialDetails{}); err != nil {
-		log.Fatalf("❌ Gagal migrasi EventOfficialDetails: %v", err)
-	}
-	if err := db.AutoMigrate(&domain.EventVendorPayout{}); err != nil {
-		log.Fatalf("❌ Gagal migrasi EventVendorPayout: %v", err)
-	}
-	if err := db.AutoMigrate(&domain.EventVendorAllocation{}); err != nil {
-		log.Fatalf("❌ Gagal migrasi EventVendorAllocation: %v", err)
-	}
-
-	log.Println("🎉 SUKSES BULAT! Seluruh tabel terpasang murni secara modular di Supabase!")
+	fmt.Println("🚀 Go GORM Backend successfully connected to Supabase database!")
 
 	// ============================================================================
-	// 📦 DEPENDENCY INJECTION MAPPING (REPOS, USECASES, HANDLERS)
+	// DATABASE SCHEMA — managed by SQL migrations (golang-migrate)
+	// ----------------------------------------------------------------------------
+	// AutoMigrate has been retired in favour of manual versioned SQL migrations.
+	// Apply the schema before running the server:
+	//   go run ./cmd/migrate/main.go up
+	// See db/migrations/ for the DDL and cmd/migrate/main.go for the runner.
 	// ============================================================================
-	
+
+	// ============================================================================
+	// DEPENDENCY INJECTION (REPOS, USECASES, HANDLERS)
+	// ============================================================================
+
 	// 1. Repository Layer
 	walletRepo := repository.NewWalletRepository(sqlDB)
 	transactionRepo := repository.NewTransactionRepository(sqlDB)
-	userRepo := repository.NewUserRepository(sqlDB) 
-	financeRepo := repository.NewFinanceRepository(sqlDB)
-	idemRepo := repository.NewIdempotencyRepository(sqlDB)
+	userRepo := repository.NewUserRepository(sqlDB)
 	kycRepo := repository.NewKYCRepository(sqlDB)
 	vendorRepo := repository.NewVendorRepository(sqlDB)
+	reviewRepo := repository.NewReviewRepository(sqlDB)
+	disputeRepo := repository.NewDisputeRepository(sqlDB)
 
-	// 2. Usecase Layer[cite: 11]
+	// Unit of Work: transactional boundary across repositories (Serializable + FOR UPDATE)
+	unitOfWork := repository.NewUnitOfWork(sqlDB)
+
+	// External adapters: fraud scoring + on-chain audit-log relayer (gasless) + Midtrans.
+	// Falls back to stub when an external service is not configured (dev/test env).
+	fraudClient := newFraudClient(cfg)
+	relayerSvc := newRelayer(cfg)
+	midtransClient := newMidtransClient(cfg)
+
+	// Idempotency: prefer Redis when configured, fall back to PostgreSQL.
+	idemRepo := setupIdempotency(context.Background(), cfg, sqlDB)
+	// 2. Usecase Layer
 	financeCalc := usecase.NewFinanceCalculator()
-	userUsecase := usecase.NewUserUsecase(userRepo, walletRepo)
+	userUsecase := usecase.NewUserUsecase(unitOfWork, userRepo, walletRepo, midtransClient)
 	kycUsecase := usecase.NewKYCUsecase(kycRepo)
 	vendorUsecase := usecase.NewVendorUsecase(vendorRepo)
+	reviewUsecase := usecase.NewReviewUsecase(transactionRepo, reviewRepo)
+	disbursementUsecase := usecase.NewDisbursementUsecase(transactionRepo)
+	disputeUsecase := usecase.NewDisputeUsecase(unitOfWork, disputeRepo)
 
-	// Pemecahan Usecase Transaksi Baru
-	goodsUsecase := usecase.NewTransactionGoodsUsecase(transactionRepo, walletRepo, financeRepo, financeCalc)
-	servicesUsecase := usecase.NewTransactionServicesUsecase(transactionRepo, walletRepo, financeRepo, financeCalc)
-	eventsUsecase := usecase.NewTransactionEventsUsecase(transactionRepo, walletRepo, financeRepo, financeCalc)
+	// Auth: token signing service + credential usecase (register/login).
+	tokenLifetime, err := time.ParseDuration(cfg.JWT.TokenLifetime)
+	if err != nil {
+		log.Printf("⚠️  Invalid JWT_TOKEN_LIFETIME %q, defaulting to 24h", cfg.JWT.TokenLifetime)
+		tokenLifetime = 24 * time.Hour
+	}
+	tokenService := usecase.NewTokenService(cfg.JWT.Secret, tokenLifetime)
+	authUsecase := usecase.NewAuthUsecase(unitOfWork, userRepo, tokenService)
 
-	// 3. Handler Layer[cite: 11]
-	userHandler := handlers.NewUserHandler(userUsecase) 
+	goodsUsecase := usecase.NewTransactionGoodsUsecase(unitOfWork, transactionRepo, financeCalc, fraudClient, relayerSvc)
+	servicesUsecase := usecase.NewTransactionServicesUsecase(unitOfWork, transactionRepo, financeCalc, fraudClient, relayerSvc)
+	eventsUsecase := usecase.NewTransactionEventsUsecase(unitOfWork, transactionRepo, walletRepo, financeCalc, fraudClient, relayerSvc)
+
+	// 3. Handler Layer
+	userHandler := handlers.NewUserHandler(userUsecase, cfg.JWT.Secret)
+	authHandler := handlers.NewAuthHandler(authUsecase)
 	walletHandler := handlers.NewWalletHandler(userUsecase)
 	kycHandler := handlers.NewKYCHandler(kycUsecase)
 	vendorHandler := handlers.NewVendorHandler(vendorUsecase)
+	reviewHandler := handlers.NewReviewHandler(reviewUsecase)
+	disbursementHandler := handlers.NewDisbursementHandler(disbursementUsecase)
+	disputeHandler := handlers.NewDisputeHandler(disputeUsecase)
 
-	// Pemecahan Handler Transaksi Baru
 	goodsHandler := handlers.NewTransactionGoodsHandler(goodsUsecase)
 	servicesHandler := handlers.NewTransactionServicesHandler(servicesUsecase)
 	eventsHandler := handlers.NewTransactionEventsHandler(eventsUsecase)
 
-	// ============================================================================
-	// 🤖 MENYALAKAN BACKGROUND WORKER ROBOT PATROLI[cite: 11]
-	// ============================================================================
-	releaseWorker := worker.NewAutoReleaseWorker(transactionRepo, goodsUsecase)
-	releaseWorker.Start(context.Background())
+	webhookHandler := handlers.NewMidtransWebhookHandler(midtransClient, userUsecase, goodsUsecase, servicesUsecase, eventsUsecase)
+
+	// Auth middleware (JWT secret from config, not os.Getenv per-request)
+	authMW := handlers.NewAuthMiddleware(cfg.JWT.Secret)
 
 	// ============================================================================
-	// 📡 HTTP ROUTING ENGINE & MIDDLEWARE PROTECTION[cite: 11]
+	// BACKGROUND WORKERS
+	// ============================================================================
+	workerCtx, stopWorkers := context.WithCancel(context.Background())
+	defer stopWorkers()
+
+	releaseWorker := worker.NewAutoReleaseWorker(transactionRepo, goodsUsecase)
+	releaseWorker.Start(workerCtx)
+
+	crmWorker := worker.NewCRMWorker(walletRepo, reviewRepo, unitOfWork, financeCalc)
+	crmWorker.Start(workerCtx)
+
+	// ============================================================================
+	// HTTP ROUTING & MIDDLEWARE
 	// ============================================================================
 	r := gin.Default()
-
-	r.Use(handlers.CORSMiddleware())
+	r.Use(handlers.CORSMiddleware(cfg.App.CORSAllowedOrigins))
 	r.Use(handlers.IdempotencyMiddleware(idemRepo))
 
 	r.GET("/", func(c *gin.Context) {
@@ -153,46 +146,164 @@ func main() {
 			"message": "Rekberkuy Engine is running smoothly with Multi-Tenant Architecture",
 		})
 	})
+	r.GET("/healthz", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
 
 	api := r.Group("/api/v1")
 	{
-		// 🔓 JALUR PUBLIK & SISTEM INTERNASIONAL[cite: 11]
-		api.POST("/users/register", userHandler.RegisterProfileHandler)
-		api.POST("/users/token-test", userHandler.GenerateTokenTestHandler)
-		
-		// Dokumen KYC & Registrasi Entitas Mitra
-		api.POST("/kyc/submit", handlers.AuthRoleMiddleware(domain.RoleUser), kycHandler.SubmitKYCHandler)
-		api.POST("/vendors/register", handlers.AuthRoleMiddleware(domain.RoleUser), vendorHandler.RegisterVendorHandler)
+		// Public auth routes (credential-based register/login)
+		api.POST("/auth/register", authHandler.RegisterHandler)
+		api.POST("/auth/login", authHandler.LoginHandler)
 
-		// 🛍️ KLASTER TRANSAKSI BARANG (GOODS GROUP)[cite: 11]
+		// Dev-only token backdoor — never registered in production.
+		if !cfg.App.IsProduction() {
+			api.POST("/users/token-test", userHandler.GenerateTokenTestHandler)
+		}
+
+		// KYC & vendor (require login)
+		api.POST("/kyc/submit", authMW.RequireRole(domain.RoleUser), kycHandler.SubmitKYCHandler)
+		api.POST("/vendors/register", authMW.RequireRole(domain.RoleUser), vendorHandler.RegisterVendorHandler)
+
+		// Goods Transactions
 		goodsGroup := api.Group("/transactions/goods")
 		{
-			goodsGroup.POST("/lock", handlers.AuthRoleMiddleware(domain.RoleUser), goodsHandler.LockFundsGoodsHandler)
-			goodsGroup.POST("/release", handlers.AuthRoleMiddleware(domain.RoleUser), goodsHandler.ReleaseGoodsHandler)
+			goodsGroup.POST("/lock", authMW.RequireRole(domain.RoleUser), goodsHandler.LockFundsGoodsHandler)
+			goodsGroup.POST("/release", authMW.RequireRole(domain.RoleUser), goodsHandler.ReleaseGoodsHandler)
 		}
 
-		// 💼 KLASTER TRANSAKSI JASA (SERVICES GROUP)[cite: 11]
+		// Services Transactions
 		servicesGroup := api.Group("/transactions/services")
 		{
-			servicesGroup.POST("/lock", handlers.AuthRoleMiddleware(domain.RoleUser), servicesHandler.LockFundsServicesHandler)
-			servicesGroup.POST("/release-milestone", handlers.AuthRoleMiddleware(domain.RoleUser), servicesHandler.ReleaseMilestoneHandler)
+			servicesGroup.POST("/lock", authMW.RequireRole(domain.RoleUser), servicesHandler.LockFundsServicesHandler)
+			servicesGroup.POST("/release-milestone", authMW.RequireRole(domain.RoleUser), servicesHandler.ReleaseMilestoneHandler)
 		}
 
-		// 🎪 KLASTER TRANSAKSI ACARA (EVENTS GROUP)[cite: 11]
+		// Event Transactions
 		eventsGroup := api.Group("/transactions/events")
 		{
-			eventsGroup.POST("/lock", handlers.AuthRoleMiddleware(domain.RoleUser), eventsHandler.LockFundsEventsHandler)
-			eventsGroup.POST("/release-milestone", handlers.AuthRoleMiddleware(domain.RoleAdmin), eventsHandler.ReleaseEventMilestoneHandler)
-			eventsGroup.POST("/release-vendors", handlers.AuthRoleMiddleware(domain.RoleEventOrganizer, domain.RoleAdmin), eventsHandler.ProcessEventVendorPayoutHandler)
+			eventsGroup.POST("/lock", authMW.RequireRole(domain.RoleUser), eventsHandler.LockFundsEventsHandler)
+			eventsGroup.POST("/release-milestone", authMW.RequireRole(domain.RoleAdmin), eventsHandler.ReleaseEventMilestoneHandler)
+			eventsGroup.POST("/release-vendors", authMW.RequireRole(domain.RoleEventOrganizer, domain.RoleAdmin), eventsHandler.ProcessEventVendorPayoutHandler)
+			eventsGroup.POST("/payouts/:id/disburse", authMW.RequireRole(domain.RoleAdmin), disbursementHandler.MarkDisbursedHandler)
 		}
 
-		// 💳 KLASTER GERBANG LOG PEMBAYARAN WALLET[cite: 11]
+		// Wallet
 		wallets := api.Group("/wallets")
 		{
-			wallets.POST("/topup", handlers.AuthRoleMiddleware(domain.RoleUser), walletHandler.CreateTopUpHandler)
+			wallets.POST("/topup", authMW.RequireRole(domain.RoleUser), walletHandler.CreateTopUpHandler)
 		}
+
+		// Reviews (buyer rates counterparty after RELEASED)
+		api.POST("/reviews", authMW.RequireRole(domain.RoleUser), reviewHandler.CreateReviewHandler)
+		api.GET("/users/:id/reviews", reviewHandler.GetReviewsForUserHandler)
+
+		// Disputes (raise while funds locked; Admin mediates — ADR-0003)
+		api.POST("/disputes", authMW.RequireRole(domain.RoleUser), disputeHandler.OpenDisputeHandler)
+		api.POST("/disputes/:id/acknowledge", authMW.RequireRole(domain.RoleAdmin), disputeHandler.AcknowledgeDisputeHandler)
+		api.POST("/disputes/:id/resolve", authMW.RequireRole(domain.RoleAdmin), disputeHandler.ResolveDisputeHandler)
+		api.GET("/disputes/:id", disputeHandler.GetDisputeHandler)
+
+		// Midtrans webhook (public, no JWT — verified via SignatureKey)
+		api.POST("/webhooks/midtrans", webhookHandler.NotificationHandler)
 	}
 
-	log.Printf("Server berjalan di port %s...", cfg.AppPort)
-	r.Run(":" + cfg.AppPort)
+	// ============================================================================
+	// GRACEFUL SHUTDOWN
+	// ============================================================================
+	srv := &http.Server{
+		Addr:    ":" + cfg.App.Port,
+		Handler: r,
+	}
+
+	// context cancelled when SIGINT/SIGTERM is received
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
+	go func() {
+		log.Printf("Server running on port %s...", cfg.App.Port)
+		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Fatalf("❌ Server failed to run: %v", err)
+		}
+	}()
+
+	<-ctx.Done()
+	log.Println("Shutdown signal received, stopping server safely...")
+
+	// Stop background workers
+	stopWorkers()
+	releaseWorker.Stop()
+	crmWorker.Stop()
+
+	// Give in-flight requests time to finish
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("⚠️  Server shutdown encountered an error: %v", err)
+	}
+
+	if err := sqlDB.Close(); err != nil {
+		log.Printf("⚠️  Database connection close encountered an error: %v", err)
+	}
+
+	log.Println("Server successfully shut down. Goodbye! 👋")
+}
+
+// setupIdempotency selects the idempotency backend: Redis when configured &
+// reachable, otherwise PostgreSQL (race-safe via ON CONFLICT).
+func setupIdempotency(ctx context.Context, cfg *config.Config, sqlDB *sql.DB) domain.IdempotencyRepository {
+	if cfg.RedisEnabled() {
+		client, err := repository.NewRedisClient(ctx, cfg.Redis.URL)
+		if err != nil {
+			log.Printf("⚠️  Redis unreachable (%v), falling back to PostgreSQL idempotency.", err)
+		} else {
+			log.Println("🔌 Idempotency backend: Redis (SETNX + TTL)")
+			return repository.NewIdempotencyRedisRepository(client, cfg.Redis.TTL.IdempotencySec)
+		}
+	}
+	log.Println("🔌 Idempotency backend: PostgreSQL (ON CONFLICT)")
+	return repository.NewIdempotencyRepository(sqlDB)
+}
+
+// newFraudClient selects the fraud scoring adapter: HTTP to backend-ai when
+// Groq is configured, falls back to stub (always safe) for development.
+func newFraudClient(cfg *config.Config) domain.FraudClient {
+	if cfg.AI.GroqAPIKey != "" {
+		log.Printf("🔌 Fraud backend: backend-ai (%s)", cfg.AI.ServiceURL)
+		return fraud.NewFraudHTTPClient(cfg.AI.ServiceURL, cfg.AI.GroqAPIKey, 5*time.Second, cfg.AI.FailOpen)
+	}
+	log.Println("🔌 Fraud backend: stub (backend-ai not configured)")
+	return fraud.NewFraudClientStub()
+}
+
+// newRelayer selects the on-chain audit-log adapter: go-ethereum relayer to Avalanche
+// when fully configured, falls back to stub (dummy tx hash) for development.
+func newRelayer(cfg *config.Config) domain.Relayer {
+	if cfg.BlockchainEnabled() {
+		r, err := relayer.NewEthRelayer(
+			cfg.Blockchain.AvalancheRPCURL,
+			cfg.Blockchain.DeployerPrivateKey,
+			cfg.Blockchain.ContractAddress,
+			cfg.Blockchain.ChainID,
+		)
+		if err != nil {
+			log.Printf("⚠️  Failed to init on-chain relayer (%v), falling back to stub.", err)
+			return relayer.NewRelayerStub()
+		}
+		log.Println("⛓️  Relayer on-chain: Avalanche (gasless audit-log)")
+		return r
+	}
+	log.Println("⛓️  Relayer on-chain: stub (blockchain not configured)")
+	return relayer.NewRelayerStub()
+}
+
+// newMidtransClient selects the Midtrans adapter: real Snap client when ServerKey
+// is configured, nil otherwise (top-up will be rejected with a clear message).
+func newMidtransClient(cfg *config.Config) domain.MidtransClient {
+	if cfg.MidtransEnabled() {
+		log.Printf("💳 Midtrans: %s", cfg.Midtrans.Environment)
+		return midtrans.NewSnapClient(cfg.Midtrans.ServerKey, cfg.Midtrans.Environment, 10*time.Second)
+	}
+	log.Println("💳 Midtrans: not configured (top-up inactive)")
+	return nil
 }

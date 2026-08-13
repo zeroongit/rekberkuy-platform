@@ -1,9 +1,9 @@
 package handlers
 
 import (
+	"github.com/gin-gonic/gin"
 	"net/http"
 	"rekberkuy/core-service/internal/usecase"
-	"github.com/gin-gonic/gin"
 )
 
 type TransactionServicesHandler struct {
@@ -27,7 +27,7 @@ type LockServicesRequest struct {
 func (h *TransactionServicesHandler) LockFundsServicesHandler(c *gin.Context) {
 	var req LockServicesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Payload tidak valid: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payload: " + err.Error()})
 		return
 	}
 
@@ -39,7 +39,7 @@ func (h *TransactionServicesHandler) LockFundsServicesHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusCreated, gin.H{"message": "Escrow jasa berhasil diinisialisasi", "data": tx})
+	c.JSON(http.StatusCreated, gin.H{"message": "Service escrow successfully initialized", "data": tx})
 }
 
 func (h *TransactionServicesHandler) ReleaseMilestoneHandler(c *gin.Context) {
@@ -55,5 +55,5 @@ func (h *TransactionServicesHandler) ReleaseMilestoneHandler(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
 	}
-	c.JSON(http.StatusOK, gin.H{"message": "Dana termin milestone jasa berhasil dicairkan ke freelancer!"})
+	c.JSON(http.StatusOK, gin.H{"message": "Service milestone funds successfully disbursed to freelancer!"})
 }
