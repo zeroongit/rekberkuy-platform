@@ -18,8 +18,10 @@ import (
 
 	"rekberkuy/core-service/config"
 	"rekberkuy/core-service/internal/delivery/handlers"
+	"rekberkuy/core-service/internal/disbursement"
 	"rekberkuy/core-service/internal/domain"
 	"rekberkuy/core-service/internal/fraud"
+	"rekberkuy/core-service/internal/kyc"
 	"rekberkuy/core-service/internal/midtrans"
 	"rekberkuy/core-service/internal/relayer"
 	"rekberkuy/core-service/internal/repository"
@@ -66,6 +68,7 @@ func main() {
 	userRepo := repository.NewUserRepository(sqlDB)
 	kycRepo := repository.NewKYCRepository(sqlDB)
 	vendorRepo := repository.NewVendorRepository(sqlDB)
+	categoryRepo := repository.NewCategoryRepository(sqlDB)
 	reviewRepo := repository.NewReviewRepository(sqlDB)
 	disputeRepo := repository.NewDisputeRepository(sqlDB)
 
@@ -75,6 +78,7 @@ func main() {
 	// External adapters: fraud scoring + on-chain audit-log relayer (gasless) + Midtrans.
 	// Falls back to stub when an external service is not configured (dev/test env).
 	fraudClient := newFraudClient(cfg)
+	kycClient := newKYCClient(cfg)
 	relayerSvc := newRelayer(cfg)
 	midtransClient := newMidtransClient(cfg)
 
@@ -83,7 +87,7 @@ func main() {
 	// 2. Usecase Layer
 	financeCalc := usecase.NewFinanceCalculator()
 	userUsecase := usecase.NewUserUsecase(unitOfWork, userRepo, walletRepo, midtransClient)
-	kycUsecase := usecase.NewKYCUsecase(kycRepo)
+	kycUsecase := usecase.NewKYCUsecase(kycRepo, unitOfWork, kycClient)
 	vendorUsecase := usecase.NewVendorUsecase(vendorRepo)
 	reviewUsecase := usecase.NewReviewUsecase(transactionRepo, reviewRepo)
 	disbursementUsecase := usecase.NewDisbursementUsecase(transactionRepo)
@@ -102,15 +106,25 @@ func main() {
 	servicesUsecase := usecase.NewTransactionServicesUsecase(unitOfWork, transactionRepo, financeCalc, fraudClient, relayerSvc)
 	eventsUsecase := usecase.NewTransactionEventsUsecase(unitOfWork, transactionRepo, walletRepo, financeCalc, fraudClient, relayerSvc)
 
+	// Read APIs + withdrawal flow. The disbursement client is the seam for the
+	// future Midtrans Payout integration; today it serves the ESTIMATE half of
+	// the withdrawal true-up model (stub = configured flat fee).
+	disbursementClient := disbursement.NewDisbursementStub(cfg.Midtrans.DisbursementFee)
+	transactionQueryUsecase := usecase.NewTransactionQueryUsecase(transactionRepo)
+	catalogUsecase := usecase.NewCatalogUsecase(categoryRepo, vendorRepo)
+	withdrawalUsecase := usecase.NewWithdrawalUsecase(unitOfWork, walletRepo, disbursementClient)
+
 	// 3. Handler Layer
 	userHandler := handlers.NewUserHandler(userUsecase, cfg.JWT.Secret)
 	authHandler := handlers.NewAuthHandler(authUsecase)
-	walletHandler := handlers.NewWalletHandler(userUsecase)
+	walletHandler := handlers.NewWalletHandler(userUsecase, withdrawalUsecase)
 	kycHandler := handlers.NewKYCHandler(kycUsecase)
 	vendorHandler := handlers.NewVendorHandler(vendorUsecase)
 	reviewHandler := handlers.NewReviewHandler(reviewUsecase)
 	disbursementHandler := handlers.NewDisbursementHandler(disbursementUsecase)
 	disputeHandler := handlers.NewDisputeHandler(disputeUsecase)
+	transactionQueryHandler := handlers.NewTransactionQueryHandler(transactionQueryUsecase)
+	catalogHandler := handlers.NewCatalogHandler(catalogUsecase)
 
 	goodsHandler := handlers.NewTransactionGoodsHandler(goodsUsecase)
 	servicesHandler := handlers.NewTransactionServicesHandler(servicesUsecase)
@@ -165,6 +179,25 @@ func main() {
 		api.POST("/kyc/submit", authMW.RequireRole(domain.RoleUser), kycHandler.SubmitKYCHandler)
 		api.POST("/vendors/register", authMW.RequireRole(domain.RoleUser), vendorHandler.RegisterVendorHandler)
 
+		// KYC admin review — the AI score stored on each submission is a
+		// REFERENCE only; approve/reject is always the admin's decision.
+		adminGroup := api.Group("/admin", authMW.RequireRole(domain.RoleAdmin))
+		{
+			adminGroup.GET("/kyc/pending", kycHandler.GetPendingKYCsHandler)
+			adminGroup.GET("/kyc/:id", kycHandler.GetKYCDetailHandler)
+			adminGroup.POST("/kyc/:id/review", kycHandler.ReviewKYCHandler)
+			adminGroup.GET("/withdrawals/pending", walletHandler.ListPendingWithdrawalsHandler)
+			adminGroup.POST("/withdrawals/:id/disburse", walletHandler.MarkWithdrawalDisbursedHandler)
+		}
+
+		// Read APIs: transaction list/detail (party-scoped)
+		api.GET("/transactions", authMW.RequireRole(domain.RoleUser), transactionQueryHandler.ListMyTransactionsHandler)
+		api.GET("/transactions/:id", authMW.RequireRole(domain.RoleUser), transactionQueryHandler.GetTransactionDetailHandler)
+
+		// Public catalog: 3-tier taxonomy + vendor marketplace
+		api.GET("/categories", catalogHandler.GetCategoryCatalogHandler)
+		api.GET("/vendors", catalogHandler.ListMarketplaceVendorsHandler)
+
 		// Goods Transactions
 		goodsGroup := api.Group("/transactions/goods")
 		{
@@ -183,6 +216,7 @@ func main() {
 		eventsGroup := api.Group("/transactions/events")
 		{
 			eventsGroup.POST("/lock", authMW.RequireRole(domain.RoleUser), eventsHandler.LockFundsEventsHandler)
+			eventsGroup.POST("/:id/vendor-invoices", authMW.RequireRole(domain.RoleEventOrganizer, domain.RoleAdmin), eventsHandler.SubmitVendorInvoiceHandler)
 			eventsGroup.POST("/release-milestone", authMW.RequireRole(domain.RoleAdmin), eventsHandler.ReleaseEventMilestoneHandler)
 			eventsGroup.POST("/release-vendors", authMW.RequireRole(domain.RoleEventOrganizer, domain.RoleAdmin), eventsHandler.ProcessEventVendorPayoutHandler)
 			eventsGroup.POST("/payouts/:id/disburse", authMW.RequireRole(domain.RoleAdmin), disbursementHandler.MarkDisbursedHandler)
@@ -192,6 +226,10 @@ func main() {
 		wallets := api.Group("/wallets")
 		{
 			wallets.POST("/topup", authMW.RequireRole(domain.RoleUser), walletHandler.CreateTopUpHandler)
+			wallets.GET("/me", authMW.RequireRole(domain.RoleUser), walletHandler.GetBalanceHandler)
+			wallets.GET("/me/transactions", authMW.RequireRole(domain.RoleUser), walletHandler.GetHistoryHandler)
+			wallets.POST("/withdraw", authMW.RequireRole(domain.RoleUser), walletHandler.RequestWithdrawalHandler)
+			wallets.GET("/withdrawals", authMW.RequireRole(domain.RoleUser), walletHandler.ListMyWithdrawalsHandler)
 		}
 
 		// Reviews (buyer rates counterparty after RELEASED)
@@ -277,6 +315,19 @@ func newFraudClient(cfg *config.Config) domain.FraudClient {
 	}
 	log.Println("🔌 Fraud backend: stub (FRAUD_SCREENING_ENABLED=false)")
 	return fraud.NewFraudClientStub()
+}
+
+// newKYCClient selects the KYC verification adapter: HTTP to the backend-ai
+// service when screening is enabled, else the always-unavailable stub. Unlike
+// fraud, an unavailable KYC AI is NOT fatal — the submission simply proceeds
+// without an AI reference and the admin reviews the raw documents.
+func newKYCClient(cfg *config.Config) domain.KYCClient {
+	if cfg.AI.ScreeningEnabled {
+		log.Printf("🔌 KYC AI backend: backend-ai (%s), reference-only scoring", cfg.AI.ServiceURL)
+		return kyc.NewKYCHTTPClient(cfg.AI.ServiceURL, 10*time.Second)
+	}
+	log.Println("🔌 KYC AI backend: stub (FRAUD_SCREENING_ENABLED=false)")
+	return kyc.NewKYCClientStub()
 }
 
 // newRelayer selects the on-chain audit-log adapter: go-ethereum relayer to Avalanche
