@@ -25,7 +25,7 @@ func TestLockFundsEvents_Success(t *testing.T) {
 	u := usecase.NewTransactionEventsUsecase(newMockUnitOfWork(txRepo, &mockWalletRepo{}, &mockFinanceRepo{}, userRepo), txRepo, &mockWalletRepo{}, usecase.NewFinanceCalculator(), &mockFraudClient{}, &mockRelayer{})
 
 	// Events: buyer fee = 0, seller fee = 0 -> gross = net = base
-	tx, err := u.LockFundsEvents(ctx, "buyer-1", "seller-1", 50000000, true, "GOLD", "REKBERPAY", "idem-evt-1")
+	tx, err := u.LockFundsEvents(ctx, "buyer-1", "seller-1", 50000000, true, "GOLD", "REKBERPAY", "idem-evt-1", validEventsDetail(), nil)
 	if err != nil {
 		t.Fatalf("expected success, got: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestLockFundsEvents_InvalidAmount(t *testing.T) {
 	ctx := context.Background()
 	u := usecase.NewTransactionEventsUsecase(newMockUnitOfWork(&mockTransactionRepo{}, &mockWalletRepo{}, &mockFinanceRepo{}, nil), &mockTransactionRepo{}, &mockWalletRepo{}, usecase.NewFinanceCalculator(), &mockFraudClient{}, &mockRelayer{})
 
-	if _, err := u.LockFundsEvents(ctx, "b", "s", -100, true, "GOLD", "REKBERPAY", "idem"); err == nil {
+	if _, err := u.LockFundsEvents(ctx, "b", "s", -100, true, "GOLD", "REKBERPAY", "idem", validEventsDetail(), nil); err == nil {
 		t.Fatal("expected error for negative amount")
 	}
 }

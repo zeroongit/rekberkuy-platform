@@ -29,9 +29,37 @@ func NewTransactionEventsUsecase(uow domain.UnitOfWork, tr domain.TransactionRep
 	}
 }
 
-func (u *TransactionEventsUsecase) LockFundsEvents(ctx context.Context, buyerID, sellerID string, amountBase int64, isRekberPay bool, sellerTier string, paymentMethod, idempotencyKey string) (*domain.Transaction, error) {
+func (u *TransactionEventsUsecase) LockFundsEvents(ctx context.Context, buyerID, sellerID string, amountBase int64, isRekberPay bool, sellerTier string, paymentMethod, idempotencyKey string, detail *domain.TransactionEvents, allocations []domain.EventVendorAllocation) (*domain.Transaction, error) {
 	if amountBase <= 0 {
 		return nil, errors.New("event transaction amount must be greater than zero")
+	}
+	if detail == nil {
+		return nil, errors.New("event transaction detail (category, event name, schedule) is required")
+	}
+	if detail.SubSubCategoryID == 0 || detail.EventName == "" || detail.EventStartTime.IsZero() || detail.EventEndTime.IsZero() {
+		return nil, errors.New("event detail requires sub_sub_category_id, event_name, event_start_time and event_end_time")
+	}
+	if !detail.EventEndTime.After(detail.EventStartTime) {
+		return nil, errors.New("event_end_time must be after event_start_time")
+	}
+
+	// Allocations are the EO's vendor pledges — they may be empty at lock time
+	// (invoices drive the actual payouts), but when present they must be sane.
+	var allocTotal int64
+	for i := range allocations {
+		if allocations[i].VendorID == "" {
+			return nil, errors.New("each vendor allocation requires a vendor_id")
+		}
+		if allocations[i].AllocatedAmount <= 0 {
+			return nil, errors.New("each vendor allocation amount must be greater than zero")
+		}
+		if allocations[i].Status == "" {
+			allocations[i].Status = domain.VendorAllocationPledged
+		}
+		allocTotal += allocations[i].AllocatedAmount
+	}
+	if allocTotal > amountBase {
+		return nil, fmt.Errorf("vendor allocation total %d exceeds the transaction base amount %d", allocTotal, amountBase)
 	}
 
 	// Member cap: a regular USER may sell up to MaxMemberEventLimit per transaction.
@@ -62,11 +90,102 @@ func (u *TransactionEventsUsecase) LockFundsEvents(ctx context.Context, buyerID,
 		IdempotencyKey:  idempotencyKey,
 		PaymentMethod:   paymentMethod,
 	}
+	detail.TransactionID = txMaster.ID
+	for i := range allocations {
+		allocations[i].ID = uuid.New().String()
+		allocations[i].TransactionID = txMaster.ID
+	}
 
-	if err := u.transactionRepo.CreateTransaction(ctx, txMaster); err != nil {
-		return nil, fmt.Errorf("failed to record event escrow transaction: %w", err)
+	// Master row + event detail + vendor allocations commit atomically.
+	if err := u.uow.Do(ctx, func(ctx context.Context, stores domain.TxStores) error {
+		if err := stores.Transactions.CreateTransaction(ctx, txMaster); err != nil {
+			return fmt.Errorf("failed to record event escrow transaction: %w", err)
+		}
+		return stores.Transactions.CreateEventsDetail(ctx, detail, allocations)
+	}); err != nil {
+		return nil, err
 	}
 	return txMaster, nil
+}
+
+// SubmitEventVendorInvoice records a vendor's invoice (payment claim) against a
+// locked event escrow. Only the event's organizer (the seller) may submit.
+//
+// Escrow cap: the sum of active vendor claims PLUS other vendors' unsettled
+// pledges (PLEDGED allocations) may not exceed the escrow minus the 5% platform
+// fee, so pledges + invoices together can never over-commit the escrow. The
+// submitting vendor's own pledge is netted out — its invoice draws that pledge
+// down rather than double-counting against the cap.
+func (u *TransactionEventsUsecase) SubmitEventVendorInvoice(ctx context.Context, requesterID string, payout *domain.EventVendorPayout) error {
+	if payout == nil {
+		return errors.New("vendor invoice payload is required")
+	}
+	if payout.TransactionID == "" || payout.VendorName == "" || payout.VendorBankName == "" ||
+		payout.VendorAccountNumber == "" || payout.ExpenseDescription == "" || payout.InvoiceFileURL == "" {
+		return errors.New("vendor invoice requires transaction_id, vendor_name, vendor_bank_name, vendor_account_number, expense_description and invoice_file_url")
+	}
+	if payout.AmountRequested <= 0 {
+		return errors.New("vendor invoice amount must be greater than zero")
+	}
+
+	return u.uow.Do(ctx, func(ctx context.Context, stores domain.TxStores) error {
+		tx, err := stores.Transactions.GetTransactionByID(ctx, payout.TransactionID)
+		if err != nil {
+			return err
+		}
+		if tx.Type != domain.TypeEvents {
+			return fmt.Errorf("transaction %s is not an event escrow", tx.ID)
+		}
+		if requesterID != tx.SellerID {
+			return errors.New("only the event organizer may submit vendor invoices for this event")
+		}
+		if tx.Status != domain.StatusFundsLocked {
+			return fmt.Errorf("vendor invoices can only be submitted while the event escrow is FUNDS_LOCKED, current status %s", tx.Status)
+		}
+
+		activeTotal, err := stores.Transactions.GetActiveEventVendorPayoutsTotal(ctx, tx.ID)
+		if err != nil {
+			return err
+		}
+
+		// Pledge reservation: other vendors' unsettled pledges still hold a
+		// promise on the escrow and must be honoured. The submitting vendor's
+		// own pledge is excluded (netted) — this invoice claims against it
+		// instead of double-counting.
+		allocations, err := stores.Wallets.GetVendorAllocationsByTxID(ctx, tx.ID)
+		if err != nil {
+			return fmt.Errorf("failed to fetch vendor allocations: %w", err)
+		}
+		var pledgeReservation int64
+		for _, a := range allocations {
+			if a.Status != domain.VendorAllocationPledged {
+				continue
+			}
+			remaining := a.AllocatedAmount - a.ActualPaidAmount
+			if remaining <= 0 {
+				continue
+			}
+			if payout.VendorUserID != nil && *payout.VendorUserID == a.VendorID {
+				continue
+			}
+			pledgeReservation += remaining
+		}
+
+		payableEscrow := tx.AmountGross - domain.EventPlatformFee(tx.AmountGross)
+		totalClaims := activeTotal + pledgeReservation + payout.AmountRequested
+		if totalClaims > payableEscrow {
+			return fmt.Errorf("invoice rejected: total vendor claims %d (active invoices %d + reserved pledges %d + this invoice %d) would exceed the payable escrow %d (5%% platform fee reserved)",
+				totalClaims, activeTotal, pledgeReservation, payout.AmountRequested, payableEscrow)
+		}
+
+		payout.ID = uuid.New().String()
+		payout.Status = domain.VendorPayoutPending
+		payout.IsDisbursedByMidtrans = false
+		if payout.PayoutPhase == "" {
+			payout.PayoutPhase = "FINAL_SETTLEMENT"
+		}
+		return stores.Wallets.CreateVendorPayoutRecord(ctx, payout)
+	})
 }
 
 // ConfirmPaymentEvents settles a successful Midtrans payment for an event escrow
@@ -167,10 +286,15 @@ func (u *TransactionEventsUsecase) ProcessEventVendorPayouts(ctx context.Context
 				if err := stores.Wallets.UpdateBalanceTx(ctx, vendorTxLog, payout.AmountRequested); err != nil {
 					return fmt.Errorf("failed to transfer funds to vendor %s: %w", payout.VendorName, err)
 				}
-				if err := stores.Transactions.UpdateEventVendorPayoutStatus(ctx, payout.ID, domain.VendorPayoutApproved); err != nil {
-					return fmt.Errorf("failed to change vendor claim status %s: %w", payout.VendorName, err)
-				}
-				continue
+			if err := stores.Transactions.UpdateEventVendorPayoutStatus(ctx, payout.ID, domain.VendorPayoutApproved); err != nil {
+				return fmt.Errorf("failed to change vendor claim status %s: %w", payout.VendorName, err)
+			}
+			// The paid invoice settles (part of) the vendor's pledge — draw it
+			// down so the reservation stops holding escrow it has already consumed.
+			if err := stores.Wallets.MarkVendorAllocationClaimed(ctx, transactionID, *payout.VendorUserID, payout.AmountRequested); err != nil {
+				return fmt.Errorf("failed to draw down vendor pledge %s: %w", payout.VendorName, err)
+			}
+			continue
 			}
 
 			// External vendor -> mark as waiting for Midtrans disbursement (Phase 2).
@@ -198,7 +322,7 @@ func (u *TransactionEventsUsecase) ProcessEventVendorPayouts(ctx context.Context
 		for _, p := range payouts {
 			vendorTotal += p.AmountRequested
 		}
-		platformFee := txLock.AmountGross * 5 / 100
+		platformFee := domain.EventPlatformFee(txLock.AmountGross)
 		return stores.Finance.UpdatePlatformFinance(ctx, -(vendorTotal+platformFee), platformFee, txLock.MidtransFee)
 	}); err != nil {
 		return err
@@ -254,11 +378,15 @@ func (u *TransactionEventsUsecase) ReleaseEventMilestonePayout(ctx context.Conte
 			if err := stores.Wallets.UpdateBalanceTx(ctx, payoutTxLog, pd.AmountRequested); err != nil {
 				return fmt.Errorf("failed to disburse invoice milestone funds to wallet: %w", err)
 			}
-			if err := stores.Wallets.UpdateVendorPayoutStatus(ctx, payoutID, domain.VendorPayoutApproved); err != nil {
-				return fmt.Errorf("failed to update payout request status: %w", err)
-			}
-			credited = true
-			return stores.Finance.UpdatePlatformFinance(ctx, -pd.AmountRequested, 0, 0)
+		if err := stores.Wallets.UpdateVendorPayoutStatus(ctx, payoutID, domain.VendorPayoutApproved); err != nil {
+			return fmt.Errorf("failed to update payout request status: %w", err)
+		}
+		// The paid invoice settles (part of) the vendor's pledge — draw it down.
+		if err := stores.Wallets.MarkVendorAllocationClaimed(ctx, pd.TransactionID, *pd.VendorUserID, pd.AmountRequested); err != nil {
+			return fmt.Errorf("failed to draw down vendor pledge: %w", err)
+		}
+		credited = true
+		return stores.Finance.UpdatePlatformFinance(ctx, -pd.AmountRequested, 0, 0)
 		}
 
 		if err := stores.Wallets.UpdateVendorPayoutStatus(ctx, payoutID, domain.VendorPayoutPendingDisbursement); err != nil {

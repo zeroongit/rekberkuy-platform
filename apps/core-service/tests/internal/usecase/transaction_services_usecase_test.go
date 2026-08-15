@@ -19,7 +19,7 @@ func TestLockFundsServices_Success(t *testing.T) {
 	u := usecase.NewTransactionServicesUsecase(newMockUnitOfWork(txRepo, &mockWalletRepo{}, &mockFinanceRepo{}, nil), txRepo, usecase.NewFinanceCalculator(), &mockFraudClient{}, &mockRelayer{})
 
 	// Services: buyer fee = 0, seller fee = flat 5% -> amountGross=100000, amountNet=95000
-	tx, err := u.LockFundsServices(ctx, "buyer-1", "seller-1", 100000, true, "BRONZE", "REKBERPAY", "idem-svc-1")
+	tx, err := u.LockFundsServices(ctx, "buyer-1", "seller-1", 100000, true, "BRONZE", "REKBERPAY", "idem-svc-1", validServicesDetail(), validServicesMilestones(100000))
 	if err != nil {
 		t.Fatalf("expected success, got: %v", err)
 	}
@@ -44,7 +44,7 @@ func TestLockFundsServices_InvalidAmount(t *testing.T) {
 	ctx := context.Background()
 	u := usecase.NewTransactionServicesUsecase(newMockUnitOfWork(&mockTransactionRepo{}, &mockWalletRepo{}, &mockFinanceRepo{}, nil), &mockTransactionRepo{}, usecase.NewFinanceCalculator(), &mockFraudClient{}, &mockRelayer{})
 
-	if _, err := u.LockFundsServices(ctx, "b", "s", 0, true, "BRONZE", "REKBERPAY", "idem"); err == nil {
+	if _, err := u.LockFundsServices(ctx, "b", "s", 0, true, "BRONZE", "REKBERPAY", "idem", validServicesDetail(), validServicesMilestones(0)); err == nil {
 		t.Fatal("expected error for amount = 0")
 	}
 }
@@ -58,7 +58,7 @@ func TestLockFundsServices_CreateError(t *testing.T) {
 	}
 	u := usecase.NewTransactionServicesUsecase(newMockUnitOfWork(txRepo, &mockWalletRepo{}, &mockFinanceRepo{}, nil), txRepo, usecase.NewFinanceCalculator(), &mockFraudClient{}, &mockRelayer{})
 
-	if _, err := u.LockFundsServices(ctx, "b", "s", 50000, true, "BRONZE", "REKBERPAY", "idem"); err == nil {
+	if _, err := u.LockFundsServices(ctx, "b", "s", 50000, true, "BRONZE", "REKBERPAY", "idem", validServicesDetail(), validServicesMilestones(50000)); err == nil {
 		t.Fatal("expected error when CreateTransaction fails")
 	}
 }

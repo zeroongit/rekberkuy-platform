@@ -102,6 +102,18 @@ func (hWalletStore) CreateWallet(ctx context.Context, userID string) error { ret
 
 type hTxStore struct{ domain.TransactionRepository }
 
+func (hTxStore) CreateTransaction(ctx context.Context, tx *domain.Transaction) error { return nil }
+
+func (hTxStore) CreateGoodsDetail(ctx context.Context, tg *domain.TransactionGoods) error { return nil }
+
+func (hTxStore) CreateServicesDetail(ctx context.Context, ts *domain.TransactionServices, milestones []domain.ServiceMilestone) error {
+	return nil
+}
+
+func (hTxStore) CreateEventsDetail(ctx context.Context, te *domain.TransactionEvents, allocations []domain.EventVendorAllocation) error {
+	return nil
+}
+
 type hFinStore struct{ domain.FinanceRepository }
 
 func (hFinStore) UpdatePlatformFinance(ctx context.Context, e, r, m2 int64) error { return nil }
@@ -163,7 +175,7 @@ func routerNoUser(route string, h gin.HandlerFunc) *gin.Engine {
 func TestCreateTopUpHandler_Success(t *testing.T) {
 	walletRepo := &hWalletRepo{}
 	uu := usecase.NewUserUsecase(&hUoW{}, &hUserRepo{}, walletRepo, &hMidtrans{})
-	h := handlers.NewWalletHandler(uu)
+	h := handlers.NewWalletHandler(uu, nil)
 
 	body, _ := json.Marshal(map[string]int64{"amount": 50000})
 	w := doJSON(routerWithUser("/topup", h.CreateTopUpHandler), http.MethodPost, "/topup", string(body))
@@ -178,7 +190,7 @@ func TestCreateTopUpHandler_Success(t *testing.T) {
 }
 
 func TestCreateTopUpHandler_InvalidAmount(t *testing.T) {
-	h := handlers.NewWalletHandler(nil)
+	h := handlers.NewWalletHandler(nil, nil)
 	body := `{"amount":0}`
 	w := doJSON(routerWithUser("/topup", h.CreateTopUpHandler), http.MethodPost, "/topup", body)
 	if w.Code != http.StatusBadRequest {
@@ -187,7 +199,7 @@ func TestCreateTopUpHandler_InvalidAmount(t *testing.T) {
 }
 
 func TestCreateTopUpHandler_Unauthenticated(t *testing.T) {
-	h := handlers.NewWalletHandler(nil)
+	h := handlers.NewWalletHandler(nil, nil)
 	body := `{"amount":5000}`
 	w := doJSON(routerNoUser("/topup", h.CreateTopUpHandler), http.MethodPost, "/topup", body)
 	if w.Code != http.StatusUnauthorized {
@@ -266,7 +278,7 @@ func newGoodsHandler() *handlers.TransactionGoodsHandler {
 
 func TestLockFundsGoodsHandler_Success(t *testing.T) {
 	h := newGoodsHandler()
-	body := `{"buyer_id":"550e8400-e29b-41d4-a716-446655440000","seller_id":"550e8400-e29b-41d4-a716-446655440001","amount_base":100000,"is_rekber_pay":true,"seller_tier":"BRONZE","shipping_fee":10000,"payment_method":"REKBERPAY","idempotency_key":"idem-1"}`
+	body := `{"buyer_id":"550e8400-e29b-41d4-a716-446655440000","seller_id":"550e8400-e29b-41d4-a716-446655440001","amount_base":100000,"is_rekber_pay":true,"seller_tier":"BRONZE","shipping_fee":10000,"payment_method":"REKBERPAY","idempotency_key":"idem-1","details":{"sub_sub_category_id":1,"shipping_courier":"JNE","shipping_address":"Jl. Test No. 1","auto_confirm_deadline":"2026-09-01T10:00:00Z"}}`
 	w := doJSON(routerNoUser("/lock", h.LockFundsGoodsHandler), http.MethodPost, "/lock", body)
 	if w.Code != http.StatusCreated {
 		t.Fatalf("status = %d, want 201; body=%s", w.Code, w.Body.String())
@@ -357,7 +369,7 @@ func newEventsHandler() *handlers.TransactionEventsHandler {
 	return handlers.NewTransactionEventsHandler(uu)
 }
 
-const validLockBody = `{"buyer_id":"550e8400-e29b-41d4-a716-446655440000","seller_id":"550e8400-e29b-41d4-a716-446655440001","amount_base":100000,"is_rekber_pay":true,"seller_tier":"BRONZE","payment_method":"REKBERPAY","idempotency_key":"idem-x"}`
+const validLockBody = `{"buyer_id":"550e8400-e29b-41d4-a716-446655440000","seller_id":"550e8400-e29b-41d4-a716-446655440001","amount_base":100000,"is_rekber_pay":true,"seller_tier":"BRONZE","payment_method":"REKBERPAY","idempotency_key":"idem-x","details":{"sub_sub_category_id":1,"project_deadline":"2026-09-01T10:00:00Z","brief_description":"Landing page","event_name":"Wedding","event_start_time":"2026-09-01T08:00:00Z","event_end_time":"2026-09-01T16:00:00Z","ticket_quantity_total":100,"milestones":[{"title":"Kickoff","amount":50000},{"title":"Delivery","amount":50000}],"vendor_allocations":[]}}`
 
 func TestLockFundsServicesHandler_Success(t *testing.T) {
 	h := newServicesHandler()

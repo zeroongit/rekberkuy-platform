@@ -34,6 +34,17 @@ func (m *conservationWalletRepo) UpdateBalanceTx(ctx context.Context, rec *domai
 	return nil
 }
 
+// MarkVendorAllocationClaimed is invoked when a vendor payout settles — the
+// pledge draw-down moves no money, so the conservation ledger is unaffected.
+func (m *conservationWalletRepo) MarkVendorAllocationClaimed(ctx context.Context, transactionID, vendorID string, amount int64) error {
+	return nil
+}
+
+// GetVendorAllocationsByTxID feeds the invoice cap; no pledges in this scenario.
+func (m *conservationWalletRepo) GetVendorAllocationsByTxID(ctx context.Context, transactionID string) ([]*domain.EventVendorAllocation, error) {
+	return nil, nil
+}
+
 // accumulator finance
 type conservationFinanceRepo struct {
 	domain.FinanceRepository
