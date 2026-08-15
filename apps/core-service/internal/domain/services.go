@@ -17,6 +17,18 @@ type FraudClient interface {
 	AnalyzeTransactionRisk(ctx context.Context, userID string, amount int64) (score float64, isSafe bool, err error)
 }
 
+// KYCClient is the identity-verification port (document + selfie checking).
+// Like FraudClient, the real implementation calls backend-ai — but note the
+// different semantics: the returned score is a CONFIDENCE reference for the
+// reviewing admin. This port NEVER decides approval; the admin
+// approve/reject flow in core-service does. An error from this port must not
+// block the submission — the KYC row simply stays without an AI reference.
+type KYCClient interface {
+	// VerifyIdentity returns a verification confidence score (0-1, higher =
+	// more likely genuine) plus a short reason from the AI verification service.
+	VerifyIdentity(ctx context.Context, userID string, idCardURL string, selfieURL string, targetRole UserRole) (score float64, reason string, err error)
+}
+
 // Relayer is the gasless audit-log port to the Avalanche blockchain.
 // The backend acts as a relayer: it pays the gas and executes the smart contract
 // in the background. Users do not need a crypto wallet.
@@ -71,3 +83,35 @@ const (
 	OrderPrefixEvent   = "REKBERKUY-EVENT-"
 	OrderPrefixTopUp   = "REKBERKUY-TOPUP-"
 )
+
+// DisbursementClient is the bank-payout port (Midtrans Payout/Disbursement
+// product). This seam is PREPARED but not yet wired to a production caller:
+// today the bank transfer completes out-of-band (ADR-0002 stance) and the
+// ledger reconciles the real cost at disbursement confirmation (true-up).
+// When Midtrans Payout credentials arrive, the HTTP adapter implements this
+// port and the withdrawal flow can execute transfers in-system, reading the
+// ACTUAL fee charged straight from the API response.
+type DisbursementClient interface {
+	// ExecuteDisbursement performs the bank transfer via the provider API and
+	// reports the actual disbursement fee charged plus the provider reference.
+	ExecuteDisbursement(ctx context.Context, req DisbursementRequest) (DisbursementResult, error)
+	// EstimateDisbursementFee returns the current expected fee for a transfer.
+	// The stub returns the configured estimate (MIDTRANS_DISBURSEMENT_FEE).
+	EstimateDisbursementFee(ctx context.Context, req DisbursementRequest) (int64, error)
+}
+
+// DisbursementRequest describes a single bank payout.
+type DisbursementRequest struct {
+	WithdrawalID   string
+	BankName       string
+	AccountNumber  string
+	AccountHolder  string
+	Amount         int64
+	ReferenceLabel string // free-form narration sent to the bank
+}
+
+// DisbursementResult reports the outcome of an executed disbursement.
+type DisbursementResult struct {
+	ReferenceID string // provider-side id (Midtrans payout id)
+	Fee         int64  // ACTUAL fee charged — the source of truth for true-up
+}

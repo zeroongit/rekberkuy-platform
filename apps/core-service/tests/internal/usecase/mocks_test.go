@@ -3,9 +3,49 @@ package usecase_test
 import (
 	"context"
 	"errors"
+	"time"
 
 	"rekberkuy/core-service/internal/domain"
 )
+
+// ============================================================================
+// SHARED TEST FIXTURES — valid detail containers for lock-flow tests
+// ============================================================================
+
+func validGoodsDetail() *domain.TransactionGoods {
+	return &domain.TransactionGoods{
+		SubSubCategoryID:    1,
+		ShippingCourier:     "JNE",
+		ShippingAddress:     "Jl. Testing No. 1, Jakarta",
+		AutoConfirmDeadline: time.Now().Add(48 * time.Hour),
+	}
+}
+
+func validServicesDetail() *domain.TransactionServices {
+	return &domain.TransactionServices{
+		SubSubCategoryID:    1,
+		ProjectDeadline:    time.Now().Add(7 * 24 * time.Hour),
+		BriefDescription:   "Build a landing page",
+	}
+}
+
+// validServicesMilestones returns two milestones summing exactly to total.
+func validServicesMilestones(total int64) []domain.ServiceMilestone {
+	return []domain.ServiceMilestone{
+		{Title: "Kickoff & design", Amount: total / 2},
+		{Title: "Final delivery", Amount: total - total/2},
+	}
+}
+
+func validEventsDetail() *domain.TransactionEvents {
+	return &domain.TransactionEvents{
+		SubSubCategoryID:    1,
+		EventName:           "Wedding RekberKuy",
+		EventStartTime:      time.Now().Add(30 * 24 * time.Hour),
+		EventEndTime:        time.Now().Add(30 * 24 * time.Hour).Add(8 * time.Hour),
+		TicketQuantityTotal: 100,
+	}
+}
 
 // ============================================================================
 // SHARED MOCK REPOSITORIES
@@ -35,6 +75,15 @@ type mockTransactionRepo struct {
 	onMarkEventVendorPayoutDisbursed func(ctx context.Context, payoutID string, adminID string) error
 	onUpdateBlockchainLog            func(ctx context.Context, txID string, txHash string) error
 	onGetByMidtransOrderID           func(ctx context.Context, orderID string) (*domain.Transaction, error)
+	onCreateGoodsDetail              func(ctx context.Context, tg *domain.TransactionGoods) error
+	onCreateServicesDetail           func(ctx context.Context, ts *domain.TransactionServices, milestones []domain.ServiceMilestone) error
+	onCreateEventsDetail             func(ctx context.Context, te *domain.TransactionEvents, allocations []domain.EventVendorAllocation) error
+	onGetActivePayoutsTotal          func(ctx context.Context, txID string) (int64, error)
+	onListTransactionsByUser         func(ctx context.Context, userID string, limit, offset int) ([]domain.Transaction, error)
+	onGetGoodsDetail                 func(ctx context.Context, txID string) (*domain.TransactionGoods, error)
+	onGetServicesDetail              func(ctx context.Context, txID string) (*domain.TransactionServices, error)
+	onGetMilestones                  func(ctx context.Context, txID string) ([]domain.ServiceMilestone, error)
+	onGetEventsDetail                func(ctx context.Context, txID string) (*domain.TransactionEvents, error)
 }
 
 func (m *mockTransactionRepo) CreateTransaction(ctx context.Context, tx *domain.Transaction) error {
@@ -128,6 +177,69 @@ func (m *mockTransactionRepo) GetTransactionByMidtransOrderID(ctx context.Contex
 	return &domain.Transaction{}, nil
 }
 
+func (m *mockTransactionRepo) CreateGoodsDetail(ctx context.Context, tg *domain.TransactionGoods) error {
+	if m.onCreateGoodsDetail != nil {
+		return m.onCreateGoodsDetail(ctx, tg)
+	}
+	return nil
+}
+
+func (m *mockTransactionRepo) CreateServicesDetail(ctx context.Context, ts *domain.TransactionServices, milestones []domain.ServiceMilestone) error {
+	if m.onCreateServicesDetail != nil {
+		return m.onCreateServicesDetail(ctx, ts, milestones)
+	}
+	return nil
+}
+
+func (m *mockTransactionRepo) CreateEventsDetail(ctx context.Context, te *domain.TransactionEvents, allocations []domain.EventVendorAllocation) error {
+	if m.onCreateEventsDetail != nil {
+		return m.onCreateEventsDetail(ctx, te, allocations)
+	}
+	return nil
+}
+
+func (m *mockTransactionRepo) GetActiveEventVendorPayoutsTotal(ctx context.Context, txID string) (int64, error) {
+	if m.onGetActivePayoutsTotal != nil {
+		return m.onGetActivePayoutsTotal(ctx, txID)
+	}
+	return 0, nil
+}
+
+func (m *mockTransactionRepo) ListTransactionsByUser(ctx context.Context, userID string, limit, offset int) ([]domain.Transaction, error) {
+	if m.onListTransactionsByUser != nil {
+		return m.onListTransactionsByUser(ctx, userID, limit, offset)
+	}
+	return nil, nil
+}
+
+func (m *mockTransactionRepo) GetGoodsDetailByTxID(ctx context.Context, txID string) (*domain.TransactionGoods, error) {
+	if m.onGetGoodsDetail != nil {
+		return m.onGetGoodsDetail(ctx, txID)
+	}
+	return nil, errors.New("not found")
+}
+
+func (m *mockTransactionRepo) GetServicesDetailByTxID(ctx context.Context, txID string) (*domain.TransactionServices, error) {
+	if m.onGetServicesDetail != nil {
+		return m.onGetServicesDetail(ctx, txID)
+	}
+	return nil, errors.New("not found")
+}
+
+func (m *mockTransactionRepo) GetMilestonesByTxID(ctx context.Context, txID string) ([]domain.ServiceMilestone, error) {
+	if m.onGetMilestones != nil {
+		return m.onGetMilestones(ctx, txID)
+	}
+	return nil, nil
+}
+
+func (m *mockTransactionRepo) GetEventsDetailByTxID(ctx context.Context, txID string) (*domain.TransactionEvents, error) {
+	if m.onGetEventsDetail != nil {
+		return m.onGetEventsDetail(ctx, txID)
+	}
+	return nil, errors.New("not found")
+}
+
 // ---------------------------------------------------------------------------
 // WalletRepository
 // ---------------------------------------------------------------------------
@@ -141,11 +253,18 @@ type mockWalletRepo struct {
 	onGetCRMLoyaltyByUserID    func(ctx context.Context, userID string) (*domain.CRMLoyalty, error)
 	onUpdateCRMLoyalty         func(ctx context.Context, crmProfile *domain.CRMLoyalty) error
 	onGetVendorAllocations     func(ctx context.Context, transactionID string) ([]*domain.EventVendorAllocation, error)
+	onMarkAllocClaimed         func(ctx context.Context, transactionID, vendorID string, amount int64) error
 	onCreateVendorPayoutRecord func(ctx context.Context, payout *domain.EventVendorPayout) error
 	onGetVendorPayoutByID      func(ctx context.Context, payoutID string) (*domain.EventVendorPayout, error)
 	onUpdateVendorPayoutStatus func(ctx context.Context, payoutID string, status string) error
 	onGetWalletTxByOrderID     func(ctx context.Context, orderID string) (*domain.RekberPayTransaction, error)
 	onMarkWalletTxStatus       func(ctx context.Context, orderID string, status domain.WalletTxStatus) error
+	onGetWalletTxHistory       func(ctx context.Context, userID string, limit, offset int) ([]domain.RekberPayTransaction, error)
+	onCreateWithdrawal         func(ctx context.Context, w *domain.WithdrawalRequest) error
+	onGetWithdrawalByID        func(ctx context.Context, id string) (*domain.WithdrawalRequest, error)
+	onListWithdrawalsByUser    func(ctx context.Context, userID string, limit, offset int) ([]domain.WithdrawalRequest, error)
+	onListPendingWithdrawals   func(ctx context.Context, limit, offset int) ([]domain.WithdrawalRequest, error)
+	onMarkWithdrawalDisbursed  func(ctx context.Context, id string, adminID string, actualCost *int64) error
 }
 
 func (m *mockWalletRepo) UpdateBalanceTx(ctx context.Context, txRecord *domain.RekberPayTransaction, modifier int64) error {
@@ -197,6 +316,13 @@ func (m *mockWalletRepo) GetVendorAllocationsByTxID(ctx context.Context, transac
 	return nil, nil
 }
 
+func (m *mockWalletRepo) MarkVendorAllocationClaimed(ctx context.Context, transactionID, vendorID string, amount int64) error {
+	if m.onMarkAllocClaimed != nil {
+		return m.onMarkAllocClaimed(ctx, transactionID, vendorID, amount)
+	}
+	return nil
+}
+
 func (m *mockWalletRepo) CreateVendorPayoutRecord(ctx context.Context, payout *domain.EventVendorPayout) error {
 	if m.onCreateVendorPayoutRecord != nil {
 		return m.onCreateVendorPayoutRecord(ctx, payout)
@@ -232,6 +358,74 @@ func (m *mockWalletRepo) MarkWalletTxStatusByOrderID(ctx context.Context, orderI
 	return nil
 }
 
+func (m *mockWalletRepo) GetWalletTxHistory(ctx context.Context, userID string, limit, offset int) ([]domain.RekberPayTransaction, error) {
+	if m.onGetWalletTxHistory != nil {
+		return m.onGetWalletTxHistory(ctx, userID, limit, offset)
+	}
+	return nil, nil
+}
+
+func (m *mockWalletRepo) CreateWithdrawalRequest(ctx context.Context, w *domain.WithdrawalRequest) error {
+	if m.onCreateWithdrawal != nil {
+		return m.onCreateWithdrawal(ctx, w)
+	}
+	return nil
+}
+
+func (m *mockWalletRepo) GetWithdrawalByID(ctx context.Context, id string) (*domain.WithdrawalRequest, error) {
+	if m.onGetWithdrawalByID != nil {
+		return m.onGetWithdrawalByID(ctx, id)
+	}
+	return &domain.WithdrawalRequest{ID: id, Status: domain.WithdrawalPending}, nil
+}
+
+func (m *mockWalletRepo) ListWithdrawalsByUser(ctx context.Context, userID string, limit, offset int) ([]domain.WithdrawalRequest, error) {
+	if m.onListWithdrawalsByUser != nil {
+		return m.onListWithdrawalsByUser(ctx, userID, limit, offset)
+	}
+	return nil, nil
+}
+
+func (m *mockWalletRepo) ListPendingWithdrawals(ctx context.Context, limit, offset int) ([]domain.WithdrawalRequest, error) {
+	if m.onListPendingWithdrawals != nil {
+		return m.onListPendingWithdrawals(ctx, limit, offset)
+	}
+	return nil, nil
+}
+
+func (m *mockWalletRepo) MarkWithdrawalDisbursed(ctx context.Context, id string, adminID string, actualCost *int64) error {
+	if m.onMarkWithdrawalDisbursed != nil {
+		return m.onMarkWithdrawalDisbursed(ctx, id, adminID, actualCost)
+	}
+	return nil
+}
+
+// ---------------------------------------------------------------------------
+// DisbursementClient
+// ---------------------------------------------------------------------------
+
+// mockDisbursementClient default: flat estimate, execution refused — mirrors
+// the production stub. Override the fields for specific cases.
+type mockDisbursementClient struct {
+	domain.DisbursementClient
+	estimate int64
+	onEstimate func(ctx context.Context, req domain.DisbursementRequest) (int64, error)
+}
+
+func (m *mockDisbursementClient) EstimateDisbursementFee(ctx context.Context, req domain.DisbursementRequest) (int64, error) {
+	if m.onEstimate != nil {
+		return m.onEstimate(ctx, req)
+	}
+	if m.estimate != 0 {
+		return m.estimate, nil
+	}
+	return domain.WithdrawFeeMidtransCost, nil
+}
+
+func (m *mockDisbursementClient) ExecuteDisbursement(ctx context.Context, req domain.DisbursementRequest) (domain.DisbursementResult, error) {
+	return domain.DisbursementResult{}, errors.New("not wired")
+}
+
 // ---------------------------------------------------------------------------
 // FinanceRepository
 // ---------------------------------------------------------------------------
@@ -265,6 +459,7 @@ type mockUserRepo struct {
 	onCreateProfile     func(ctx context.Context, user *domain.UserProfile) error
 	onGetProfileByID    func(ctx context.Context, id string) (*domain.UserProfile, error)
 	onGetProfileByEmail func(ctx context.Context, email string) (*domain.UserProfile, error)
+	onUpdateUserRole    func(ctx context.Context, id string, role domain.UserRole) error
 }
 
 func (m *mockUserRepo) CreateProfile(ctx context.Context, user *domain.UserProfile) error {
@@ -288,18 +483,57 @@ func (m *mockUserRepo) GetProfileByEmail(ctx context.Context, email string) (*do
 	return nil, errors.New("not found")
 }
 
+func (m *mockUserRepo) UpdateUserRole(ctx context.Context, id string, role domain.UserRole) error {
+	if m.onUpdateUserRole != nil {
+		return m.onUpdateUserRole(ctx, id, role)
+	}
+	return nil
+}
+
 // ---------------------------------------------------------------------------
 // KYCRepository
 // ---------------------------------------------------------------------------
 
 type mockKYCRepo struct {
 	domain.KYCRepository
-	onSubmitKYC func(ctx context.Context, kyc *domain.KYCSubmission) error
+	onSubmitKYC       func(ctx context.Context, kyc *domain.KYCSubmission) error
+	onGetKYCByID      func(ctx context.Context, id string) (*domain.KYCSubmission, error)
+	onListPendingKYCs func(ctx context.Context) ([]domain.KYCSubmission, error)
+	onSaveKYCAIResult func(ctx context.Context, userID string, score float64, reason string) error
+	onReviewKYC       func(ctx context.Context, id string, status domain.KYCStatus, adminID string, notes string) error
 }
 
 func (m *mockKYCRepo) SubmitKYC(ctx context.Context, kyc *domain.KYCSubmission) error {
 	if m.onSubmitKYC != nil {
 		return m.onSubmitKYC(ctx, kyc)
+	}
+	return nil
+}
+
+func (m *mockKYCRepo) GetKYCByID(ctx context.Context, id string) (*domain.KYCSubmission, error) {
+	if m.onGetKYCByID != nil {
+		return m.onGetKYCByID(ctx, id)
+	}
+	return &domain.KYCSubmission{ID: id, Status: domain.KYCPending}, nil
+}
+
+func (m *mockKYCRepo) ListPendingKYCs(ctx context.Context) ([]domain.KYCSubmission, error) {
+	if m.onListPendingKYCs != nil {
+		return m.onListPendingKYCs(ctx)
+	}
+	return nil, nil
+}
+
+func (m *mockKYCRepo) SaveKYCAIResult(ctx context.Context, userID string, score float64, reason string) error {
+	if m.onSaveKYCAIResult != nil {
+		return m.onSaveKYCAIResult(ctx, userID, score, reason)
+	}
+	return nil
+}
+
+func (m *mockKYCRepo) ReviewKYC(ctx context.Context, id string, status domain.KYCStatus, adminID string, notes string) error {
+	if m.onReviewKYC != nil {
+		return m.onReviewKYC(ctx, id, status, adminID, notes)
 	}
 	return nil
 }
@@ -391,6 +625,7 @@ func (m *mockDisputeRepo) ResolveDispute(ctx context.Context, id string, adminID
 type mockVendorRepo struct {
 	domain.VendorRepository
 	onCreateVendor func(ctx context.Context, vendor *domain.VendorProfile) error
+	onListVendors  func(ctx context.Context, category string, limit, offset int) ([]domain.VendorProfile, error)
 }
 
 func (m *mockVendorRepo) CreateVendor(ctx context.Context, vendor *domain.VendorProfile) error {
@@ -398,6 +633,53 @@ func (m *mockVendorRepo) CreateVendor(ctx context.Context, vendor *domain.Vendor
 		return m.onCreateVendor(ctx, vendor)
 	}
 	return nil
+}
+
+func (m *mockVendorRepo) ListVendors(ctx context.Context, category string, limit, offset int) ([]domain.VendorProfile, error) {
+	if m.onListVendors != nil {
+		return m.onListVendors(ctx, category, limit, offset)
+	}
+	return nil, nil
+}
+
+// ---------------------------------------------------------------------------
+// CategoryRepository
+// ---------------------------------------------------------------------------
+
+type mockCategoryRepo struct {
+	domain.CategoryRepository
+	onListGoods   func(ctx context.Context) ([]domain.GoodsCategory, error)
+	onListService func(ctx context.Context) ([]domain.ServiceCategory, error)
+	onListEvent   func(ctx context.Context) ([]domain.EventCategory, error)
+	onListVendor  func(ctx context.Context) ([]domain.VendorSubCategory, error)
+}
+
+func (m *mockCategoryRepo) ListGoodsCategories(ctx context.Context) ([]domain.GoodsCategory, error) {
+	if m.onListGoods != nil {
+		return m.onListGoods(ctx)
+	}
+	return []domain.GoodsCategory{{ID: 1, Name: "Electronics", Slug: "electronics"}}, nil
+}
+
+func (m *mockCategoryRepo) ListServiceCategories(ctx context.Context) ([]domain.ServiceCategory, error) {
+	if m.onListService != nil {
+		return m.onListService(ctx)
+	}
+	return []domain.ServiceCategory{{ID: 1, Name: "Design", Slug: "design"}}, nil
+}
+
+func (m *mockCategoryRepo) ListEventCategories(ctx context.Context) ([]domain.EventCategory, error) {
+	if m.onListEvent != nil {
+		return m.onListEvent(ctx)
+	}
+	return []domain.EventCategory{{ID: 1, Name: "Wedding", Slug: "wedding"}}, nil
+}
+
+func (m *mockCategoryRepo) ListVendorSubCategories(ctx context.Context) ([]domain.VendorSubCategory, error) {
+	if m.onListVendor != nil {
+		return m.onListVendor(ctx)
+	}
+	return []domain.VendorSubCategory{{ID: 1, CategoryID: 1, Name: "CATERING", Slug: "catering"}}, nil
 }
 
 // ---------------------------------------------------------------------------
@@ -485,6 +767,24 @@ func (m *mockFraudClient) AnalyzeTransactionRisk(ctx context.Context, userID str
 		return m.onAnalyze(ctx, userID, amount)
 	}
 	return 0.1, true, nil
+}
+
+// ---------------------------------------------------------------------------
+// KYCClient
+// ---------------------------------------------------------------------------
+
+// mockKYCClient default: returns a high-confidence reference with no error.
+// Override onVerify to simulate the AI service being unavailable.
+type mockKYCClient struct {
+	domain.KYCClient
+	onVerify func(ctx context.Context, userID string, idCardURL string, selfieURL string, targetRole domain.UserRole) (float64, string, error)
+}
+
+func (m *mockKYCClient) VerifyIdentity(ctx context.Context, userID string, idCardURL string, selfieURL string, targetRole domain.UserRole) (float64, string, error) {
+	if m.onVerify != nil {
+		return m.onVerify(ctx, userID, idCardURL, selfieURL, targetRole)
+	}
+	return 0.92, "documents-genuine-same-person", nil
 }
 
 // ---------------------------------------------------------------------------
