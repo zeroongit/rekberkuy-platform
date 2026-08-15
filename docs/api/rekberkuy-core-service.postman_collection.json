@@ -35,6 +35,30 @@
       "key": "dispute_id",
       "value": "",
       "type": "string"
+    },
+    {
+      "key": "kyc_id",
+      "value": ""
+    },
+    {
+      "key": "milestone_id",
+      "value": ""
+    },
+    {
+      "key": "vendor_id",
+      "value": ""
+    },
+    {
+      "key": "withdrawal_id",
+      "value": ""
+    },
+    {
+      "key": "buyer_id",
+      "value": ""
+    },
+    {
+      "key": "seller_id",
+      "value": ""
     }
   ],
   "item": [
@@ -46,7 +70,12 @@
           "name": "Register",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": "{{base_url}}/api/v1/auth/register",
             "body": {
               "mode": "raw",
@@ -74,7 +103,12 @@
           ],
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": "{{base_url}}/api/v1/auth/login",
             "body": {
               "mode": "raw",
@@ -88,7 +122,12 @@
           "name": "Dev Token-Test (dev only)",
           "request": {
             "method": "POST",
-            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
             "url": "{{base_url}}/api/v1/users/token-test",
             "body": {
               "mode": "raw",
@@ -102,22 +141,28 @@
     },
     {
       "name": "Reviews",
-      "description": "Buyer → counterparty reviews, left after a transaction is RELEASED. The CRM worker aggregates these into merchant tiers.",
+      "description": "Buyer \u2192 counterparty reviews, left after a transaction is RELEASED. The CRM worker aggregates these into merchant tiers.",
       "item": [
         {
           "name": "Create Review",
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
             ],
             "url": "{{base_url}}/api/v1/reviews",
             "body": {
               "mode": "raw",
               "raw": "{\n  \"transaction_id\": \"550e8400-e29b-41d4-a716-446655440000\",\n  \"rating\": 5,\n  \"comment\": \"Smooth deal\"\n}"
             },
-            "description": "Leave a 1–5 rating on the seller/service provider of a RELEASED transaction. Only the transaction's buyer may review. One review per transaction per buyer."
+            "description": "Leave a 1\u20135 rating on the seller/service provider of a RELEASED transaction. Only the transaction's buyer may review. One review per transaction per buyer."
           },
           "response": []
         },
@@ -142,7 +187,10 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
             ],
             "url": "{{base_url}}/api/v1/transactions/events/payouts/{{payout_id}}/disburse",
             "description": "ADMIN only. Marks a PENDING_DISBURSEMENT external vendor payout as DISBURSED after the Admin completes the bank transfer. Refused on any other status."
@@ -160,8 +208,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
             ],
             "url": "{{base_url}}/api/v1/disputes",
             "body": {
@@ -177,7 +231,10 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
             ],
             "url": "{{base_url}}/api/v1/disputes/{{dispute_id}}/acknowledge",
             "description": "ADMIN only. Moves a dispute OPEN -> UNDER_REVIEW (Admin takes ownership)."
@@ -189,8 +246,14 @@
           "request": {
             "method": "POST",
             "header": [
-              { "key": "Content-Type", "value": "application/json" },
-              { "key": "Authorization", "value": "Bearer {{access_token}}" }
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              },
+              {
+                "key": "Authorization",
+                "value": "Bearer {{access_token}}"
+              }
             ],
             "url": "{{base_url}}/api/v1/disputes/{{dispute_id}}/resolve",
             "body": {
@@ -210,6 +273,645 @@
             "description": "Party or Admin. Fetch a dispute's current state and outcome."
           },
           "response": []
+        }
+      ]
+    },
+    {
+      "name": "Transactions",
+      "item": [
+        {
+          "name": "Goods",
+          "item": [
+            {
+              "name": "Lock Funds (Goods)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/transactions/goods/lock",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "transactions",
+                    "goods",
+                    "lock"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"buyer_id\": \"{{buyer_id}}\",\n  \"seller_id\": \"{{seller_id}}\",\n  \"amount_base\": 100000,\n  \"is_rekber_pay\": true,\n  \"seller_tier\": \"BRONZE\",\n  \"shipping_fee\": 10000,\n  \"payment_method\": \"REKBERPAY\",\n  \"idempotency_key\": \"idem-goods-1\",\n  \"details\": {\n    \"sub_sub_category_id\": 1,\n    \"shipping_courier\": \"JNE\",\n    \"shipping_address\": \"Jl. Example No. 1, Jakarta\",\n    \"auto_confirm_deadline\": \"2026-09-01T10:00:00Z\"\n  }\n}"
+                }
+              }
+            },
+            {
+              "name": "Release Funds (Goods)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/transactions/goods/release",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "transactions",
+                    "goods",
+                    "release"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"transaction_id\": \"{{transaction_id}}\"\n}"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Services",
+          "item": [
+            {
+              "name": "Lock Funds (Services)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/transactions/services/lock",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "transactions",
+                    "services",
+                    "lock"
+                  ]
+                },
+                "description": "Milestone amounts must sum exactly to amount_base.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"buyer_id\": \"{{buyer_id}}\",\n  \"seller_id\": \"{{seller_id}}\",\n  \"amount_base\": 100000,\n  \"is_rekber_pay\": true,\n  \"seller_tier\": \"BRONZE\",\n  \"payment_method\": \"REKBERPAY\",\n  \"idempotency_key\": \"idem-svc-1\",\n  \"details\": {\n    \"sub_sub_category_id\": 1,\n    \"project_deadline\": \"2026-09-01T10:00:00Z\",\n    \"brief_description\": \"Build a landing page\",\n    \"milestones\": [\n      {\n        \"title\": \"Kickoff & design\",\n        \"amount\": 50000\n      },\n      {\n        \"title\": \"Final delivery\",\n        \"amount\": 50000\n      }\n    ]\n  }\n}"
+                }
+              }
+            },
+            {
+              "name": "Release Milestone",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/transactions/services/release-milestone",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "transactions",
+                    "services",
+                    "release-milestone"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"milestone_id\": \"{{milestone_id}}\"\n}"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "Events",
+          "item": [
+            {
+              "name": "Lock Funds (Events)",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/transactions/events/lock",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "transactions",
+                    "events",
+                    "lock"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"buyer_id\": \"{{buyer_id}}\",\n  \"seller_id\": \"{{seller_id}}\",\n  \"amount_base\": 1000000,\n  \"is_rekber_pay\": true,\n  \"seller_tier\": \"GOLD\",\n  \"payment_method\": \"REKBERPAY\",\n  \"idempotency_key\": \"idem-evt-1\",\n  \"details\": {\n    \"sub_sub_category_id\": 1,\n    \"event_name\": \"Wedding RekberKuy\",\n    \"event_start_time\": \"2026-09-01T08:00:00Z\",\n    \"event_end_time\": \"2026-09-01T16:00:00Z\",\n    \"ticket_quantity_total\": 100,\n    \"vendor_allocations\": [\n      {\n        \"vendor_id\": \"{{vendor_id}}\",\n        \"allocated_amount\": 300000\n      }\n    ]\n  }\n}"
+                }
+              }
+            },
+            {
+              "name": "Submit Vendor Invoice",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/transactions/events/{{transaction_id}}/vendor-invoices",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "transactions",
+                    "events",
+                    "{{transaction_id}}",
+                    "vendor-invoices"
+                  ]
+                },
+                "description": "EO-only. vendor_user_id (optional) marks an internal platform vendor; omit for external bank disbursement. Total claims are capped at escrow minus the 5% platform fee.",
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"vendor_name\": \"Katering Sedap\",\n  \"vendor_bank_name\": \"BCA\",\n  \"vendor_account_number\": \"1234567890\",\n  \"amount_requested\": 300000,\n  \"expense_description\": \"Catering for 100 pax\",\n  \"invoice_file_url\": \"https://gateway.pinata.cloud/ipfs/QmExample\",\n  \"payout_phase\": \"FINAL_SETTLEMENT\"\n}"
+                }
+              }
+            },
+            {
+              "name": "Release Event Milestone",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/transactions/events/release-milestone",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "transactions",
+                    "events",
+                    "release-milestone"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"payout_id\": \"{{payout_id}}\"\n}"
+                }
+              }
+            },
+            {
+              "name": "Process Vendor Payouts",
+              "request": {
+                "method": "POST",
+                "header": [
+                  {
+                    "key": "Content-Type",
+                    "value": "application/json"
+                  }
+                ],
+                "url": {
+                  "raw": "{{base_url}}/api/v1/transactions/events/release-vendors",
+                  "host": [
+                    "{{base_url}}"
+                  ],
+                  "path": [
+                    "api",
+                    "v1",
+                    "transactions",
+                    "events",
+                    "release-vendors"
+                  ]
+                },
+                "body": {
+                  "mode": "raw",
+                  "raw": "{\n  \"transaction_id\": \"{{transaction_id}}\"\n}"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "name": "List My Transactions",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transactions?limit=20&offset=0",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transactions?limit=20&offset=0"
+              ]
+            },
+            "description": "Transactions where the caller is buyer or seller, newest first."
+          }
+        },
+        {
+          "name": "Get Transaction Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/transactions/{{transaction_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "transactions",
+                "{{transaction_id}}"
+              ]
+            },
+            "description": "Party-scoped composed view: master + goods/services/events detail + milestones / vendor payouts."
+          }
+        }
+      ]
+    },
+    {
+      "name": "KYC Admin",
+      "item": [
+        {
+          "name": "List Pending KYC",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/kyc/pending",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "kyc",
+                "pending"
+              ]
+            },
+            "description": "Admin verification queue. Each submission carries the backend-ai confidence reference (ai_score/ai_reason) \u2014 reference only, the decision is the admin's."
+          }
+        },
+        {
+          "name": "Get KYC Detail",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/kyc/{{kyc_id}}",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "kyc",
+                "{{kyc_id}}"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Review KYC (Approve/Reject)",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/kyc/{{kyc_id}}/review",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "kyc",
+                "{{kyc_id}}",
+                "review"
+              ]
+            },
+            "description": "approve=true promotes the user to the submission's target_role atomically with the status update.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"approve\": true,\n  \"notes\": \"documents verified\"\n}"
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Wallet",
+      "item": [
+        {
+          "name": "Top Up",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/wallets/topup",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "topup"
+              ]
+            },
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 50000\n}"
+            }
+          }
+        },
+        {
+          "name": "Get My Balance",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/wallets/me",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "me"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Get My Wallet History",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/wallets/me/transactions?limit=20&offset=0",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "me",
+                "transactions?limit=20&offset=0"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Request Withdrawal",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/wallets/withdraw",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "withdraw"
+              ]
+            },
+            "description": "Debits wallet balance (amount + gross flat fee Rp7.500). The fee already covers the Midtrans disbursement cost (Rp4.000) \u2014 the remainder is booked as net platform revenue. Bank transfer completes out-of-band.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"amount\": 500000,\n  \"bank_name\": \"BCA\",\n  \"account_number\": \"1234567890\",\n  \"account_holder\": \"Budi Santoso\"\n}"
+            }
+          }
+        },
+        {
+          "name": "List My Withdrawals",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/wallets/withdrawals",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "wallets",
+                "withdrawals"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Catalog",
+      "item": [
+        {
+          "name": "Get Category Catalog",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/categories",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "categories"
+              ]
+            },
+            "description": "Public 3-tier taxonomy across goods/services/events/vendors."
+          }
+        },
+        {
+          "name": "List Marketplace Vendors",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/vendors?category=CATERING&limit=20&offset=0",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "vendors?category=CATERING&limit=20&offset=0"
+              ]
+            }
+          }
+        }
+      ]
+    },
+    {
+      "name": "Withdrawal Admin",
+      "item": [
+        {
+          "name": "List Pending Withdrawals",
+          "request": {
+            "method": "GET",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/withdrawals/pending",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "withdrawals",
+                "pending"
+              ]
+            }
+          }
+        },
+        {
+          "name": "Mark Withdrawal Disbursed",
+          "request": {
+            "method": "POST",
+            "header": [
+              {
+                "key": "Content-Type",
+                "value": "application/json"
+              }
+            ],
+            "url": {
+              "raw": "{{base_url}}/api/v1/admin/withdrawals/{{withdrawal_id}}/disburse",
+              "host": [
+                "{{base_url}}"
+              ],
+              "path": [
+                "api",
+                "v1",
+                "admin",
+                "withdrawals",
+                "{{withdrawal_id}}",
+                "disburse"
+              ]
+            },
+            "description": "Admin confirms the out-of-band bank transfer completed. Optional body {\"midtrans_fee\": 5500} supplies the REAL Midtrans disbursement cost \u2014 the ledger automatically reconciles the difference against the booked estimate (revenue <-> midtrans fees). Omit to keep the estimate.",
+            "body": {
+              "mode": "raw",
+              "raw": "{\n  \"midtrans_fee\": 5500\n}"
+            }
+          }
         }
       ]
     }

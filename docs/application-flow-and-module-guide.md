@@ -38,7 +38,7 @@ WAITING_PAYMENT ──(payment confirmed)──► FUNDS_LOCKED ──(confirm r
 | Capability | Status | Notes |
 |---|---|---|
 | **Fraud scoring** | ✅ Implemented & wired | Called before every fund release: `ReleaseFundsGoods`, `ReleaseMilestoneServices`, `ReleaseFundsEvents`, and `ProcessEventVendorPayout` (external vendor payouts). |
-| **KYC verification** | ❌ Not wired | `backend-ai` exposes `POST /api/v1/kyc/verify`, but `kyc_usecase.go` never calls it — `SubmitUserKYC` only persists the submission as `PENDING`. There is no admin approve/reject endpoint yet, so `KYCApproved` / `KYCRejected` are unreachable states. |
+| **KYC verification** | ✅ Implemented & wired | On `POST /api/v1/kyc/submit`, `kyc_usecase.go` calls `POST /api/v1/kyc/verify` and stores the returned confidence as `ai_score`/`ai_reason` **reference columns** (nullable — an unreachable AI never blocks the submission). The verdict is the Admin's: `POST /api/v1/admin/kyc/:id/review` flips `KYCApproved`/`KYCRejected` and, on approval, promotes the user to the submission's `target_role` in the same UnitOfWork. |
 | **Dispute resolution** | 🚫 Deliberately not AI-assisted | By design, per [ADR-0003](./adr/0003-admin-mediated-dispute-resolution-ai-deferred.md): an Admin sets the binding `Outcome` (`REFUND_BUYER` / `RELEASE_TO_SELLER`) manually. `dispute_usecase.go` never calls `backend-ai`. |
 
 ### Verification chain (fraud scoring — the only capability actually wired end-to-end)
@@ -249,7 +249,7 @@ The backend (`apps/core-service/`) follows **Clean Architecture**: `delivery/han
 
 | Service | Stack | Role |
 |---------|-------|------|
-| `backend-ai/` | Python 3.11 / FastAPI / Groq | Fraud risk scoring (called by `fraud/client.go`). Also exposes a KYC verification-scoring endpoint that is not yet called by core-service — see [AI-Assisted Admin Verification](#ai-assisted-admin-verification--current-status) below. |
+| `backend-ai/` | Python 3.11 / FastAPI / Groq | Fraud risk scoring (called by `fraud/client.go`) + KYC verification confidence (called by `kyc/client.go` at submission time, stored as an admin reference) — see [AI-Assisted Admin Verification](#ai-assisted-admin-verification--current-status) below. |
 | `blockchain/` | Solidity / Hardhat v3 / Avalanche | Audit-log smart contract `TransactionLogger` (called by `relayer/relayer.go`) |
 
 ---

@@ -55,12 +55,14 @@ schema in one of the files above, open and check the counterpart file in the *sa
 even though it lives in a different folder and a different language. The Go/Python/Solidity
 boundary is not a reason to treat the other side as "someone else's problem."
 
-**Known gap — do not silently "fix" it:** `backend-ai`'s KYC endpoint works, but `core-service`
-never calls it, and there is no admin approve/reject flow for KYC at all yet (`KYCApproved` /
-`KYCRejected` are currently unreachable states). If your task touches KYC, read
-[`docs/application-flow-and-module-guide.md`](./docs/application-flow-and-module-guide.md#ai-assisted-admin-verification--current-status)
-first — this is a documented, scoped-for-later gap, not something to wire up as a side effect of
-an unrelated task.
+**Known gap — resolved (was previously documented):** the KYC loop is now wired
+end-to-end: `core-service` calls backend-ai's `POST /api/v1/kyc/verify` at
+submission time (`internal/kyc/client.go` → `domain.KYCClient` port) and stores
+the score as nullable `ai_score`/`ai_reason` reference columns on
+`kyc_submissions`. The AI is verification-only: the verdict always comes from
+the admin approve/reject flow (`POST /api/v1/admin/kyc/:id/review`), which also
+promotes the user's role on approval. When touching KYC, keep that
+"AI scores, admin decides" split intact.
 
 ---
 
