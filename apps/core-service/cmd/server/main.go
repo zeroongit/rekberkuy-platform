@@ -147,6 +147,12 @@ func main() {
 	crmWorker := worker.NewCRMWorker(walletRepo, reviewRepo, unitOfWork, financeCalc)
 	crmWorker.Start(workerCtx)
 
+	// On-chain audit-log gap closer: retries the fire-and-forget relayer
+	// attempts that failed (always re-checking the chain first so an
+	// already-logged transaction is never duplicated).
+	auditReconciler := worker.NewAuditReconcilerWorker(transactionRepo, relayerSvc)
+	auditReconciler.Start(workerCtx)
+
 	// ============================================================================
 	// HTTP ROUTING & MIDDLEWARE
 	// ============================================================================
@@ -272,6 +278,7 @@ func main() {
 	stopWorkers()
 	releaseWorker.Stop()
 	crmWorker.Stop()
+	auditReconciler.Stop()
 
 	// Give in-flight requests time to finish
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)

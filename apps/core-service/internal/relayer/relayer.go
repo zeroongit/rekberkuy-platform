@@ -41,6 +41,11 @@ const (
 	defaultGasLim = uint64(150_000) // safe margin for a single simple log function
 	waitTimeout   = 60 * time.Second
 	gasMargin     = 2 // fee cap = base fee * gasMargin + tip
+
+	// Historical event-scan tuning (FindLoggedTransaction).
+	logScanChunkBlocks  = 2000      // per eth_getLogs request — stays under the common provider range cap
+	logScanBlockTimeEst = 1500 * time.Millisecond // conservative (actual ~2s): over-estimates how far back to start
+	logScanMaxWalks     = 6         // safety bound for the timestamp->block walk-back
 )
 
 // ethRelayer is the implementation of domain.Relayer via go-ethereum to Avalanche.
@@ -174,4 +179,110 @@ func NewRelayerStub() domain.Relayer {
 
 func (r *relayerStub) LogTransactionOnChain(ctx context.Context, txID string, amount int64, buyer string, seller string) (string, error) {
 	return "0xstubbedblockchaintxhash1234567890abcdef", nil
+}
+
+// FindLoggedTransaction on the stub reports "not found": with no chain
+// configured, the reconciler follows the same stub path as logAuditOnChain
+// (re-log -> dummy hash persisted), keeping dev/test databases consistent
+// with the existing fire-and-forget stub behaviour.
+func (r *relayerStub) FindLoggedTransaction(ctx context.Context, txID string, since time.Time) (string, bool, error) {
+	return "", false, nil
+}
+
+// FindLoggedTransaction scans historical TransactionLogged events for txID via
+// eth_getLogs, filtered by topic0 (event signature, taken from the same parsed
+// loggerABI as the write path so the two cannot drift) + topic1
+// (keccak256(txID)). The scan starts at the block corresponding to `since` and
+// runs to the chain head in provider-safe chunks.
+//
+// The event cannot exist before the transaction was RELEASED (logAuditOnChain
+// only fires post-release), so `since` bounds the scan without missing
+// anything — the caller passes the release timestamp minus a safety buffer.
+func (r *ethRelayer) FindLoggedTransaction(ctx context.Context, txID string, since time.Time) (string, bool, error) {
+	topic0 := r.parsedABI.Events["TransactionLogged"].ID
+	txIdHash := crypto.Keccak256Hash([]byte(txID))
+
+	head, err := r.client.HeaderByNumber(ctx, nil)
+	if err != nil {
+		return "", false, fmt.Errorf("failed to fetch chain head: %w", err)
+	}
+
+	start, err := r.blockAtOrBefore(ctx, head, since)
+	if err != nil {
+		return "", false, err
+	}
+
+	chunk := big.NewInt(logScanChunkBlocks)
+	for from := new(big.Int).Set(start); from.Cmp(head.Number) <= 0; from.Add(from, chunk) {
+		to := new(big.Int).Add(from, new(big.Int).Sub(chunk, big.NewInt(1)))
+		if to.Cmp(head.Number) > 0 {
+			to.Set(head.Number)
+		}
+		logs, err := r.client.FilterLogs(ctx, ethereum.FilterQuery{
+			FromBlock: new(big.Int).Set(from),
+			ToBlock:   to,
+			Addresses: []common.Address{r.contractAddr},
+			Topics:    [][]common.Hash{{topic0, txIdHash}},
+		})
+		if err != nil {
+			// A failed chunk means UNKNOWN for the whole range — the caller must
+			// treat this as skip, never as "not found" (re-logging could
+			// duplicate an append-only on-chain entry).
+			return "", false, fmt.Errorf("eth_getLogs failed (blocks %s..%s): %w", from, to, err)
+		}
+		if len(logs) == 0 {
+			continue
+		}
+		// Chunks ascend, so the first matching chunk holds the earliest
+		// recording; the contract allows duplicate logs for the same txIdHash,
+		// and the FIRST one is the canonical audit entry.
+		earliest := logs[0]
+		for _, l := range logs[1:] {
+			if l.BlockNumber < earliest.BlockNumber {
+				earliest = l
+			}
+		}
+		return earliest.TxHash.Hex(), true, nil
+	}
+	return "", false, nil
+}
+
+// blockAtOrBefore converts a wall-clock lower bound into a block number,
+// always erring on the EARLIER side: Avalanche C-Chain block time is ~2s but
+// not constant, so the initial estimate uses a conservative 1.5s divisor
+// (over-estimating how far back to start) and is then verified against real
+// headers, doubling the walk-back until a header timestamp is at or before
+// `since`. Starting too early only costs extra scan chunks; starting too late
+// could miss the event and tempt a duplicate re-log.
+func (r *ethRelayer) blockAtOrBefore(ctx context.Context, head *types.Header, since time.Time) (*big.Int, error) {
+	headTime := time.Unix(int64(head.Time), 0)
+	if !since.Before(headTime) {
+		return new(big.Int).Set(head.Number), nil
+	}
+	blocksBack := int64(headTime.Sub(since) / logScanBlockTimeEst)
+	if blocksBack < 1 {
+		blocksBack = 1
+	}
+	start := new(big.Int).Sub(head.Number, big.NewInt(blocksBack))
+	if start.Sign() < 0 {
+		return big.NewInt(0), nil
+	}
+	for i := 0; i < logScanMaxWalks; i++ {
+		h, err := r.client.HeaderByNumber(ctx, start)
+		if err != nil {
+			return nil, fmt.Errorf("failed to fetch header %s for scan-bound estimate: %w", start, err)
+		}
+		if !time.Unix(int64(h.Time), 0).After(since) {
+			return start, nil
+		}
+		span := new(big.Int).Sub(head.Number, start)
+		if span.Sign() == 0 {
+			return big.NewInt(0), nil
+		}
+		start = new(big.Int).Sub(head.Number, new(big.Int).Mul(span, big.NewInt(2)))
+		if start.Sign() < 0 {
+			return big.NewInt(0), nil
+		}
+	}
+	return nil, fmt.Errorf("could not locate a block at or before %s within %d walk-backs", since.Format(time.RFC3339), logScanMaxWalks)
 }
