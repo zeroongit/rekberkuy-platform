@@ -80,3 +80,20 @@ func (r *userRepository) GetProfileByEmail(ctx context.Context, email string) (*
 	}
 	return &user, nil
 }
+
+// UpdateUserRole promotes (or demotes) a user's role — called by the admin KYC
+// review flow when a submission is APPROVED. Must run inside the same UnitOfWork
+// as the KYC status update so role + status commit atomically.
+func (r *userRepository) UpdateUserRole(ctx context.Context, id string, role domain.UserRole) error {
+	query := `UPDATE user_profiles SET role = $2, updated_at = NOW() WHERE id = $1`
+	var err error
+	if r.tx != nil {
+		_, err = r.tx.ExecContext(ctx, query, id, string(role))
+	} else {
+		_, err = r.db.ExecContext(ctx, query, id, string(role))
+	}
+	if err != nil {
+		return fmt.Errorf("failed to update user role: %w", err)
+	}
+	return nil
+}

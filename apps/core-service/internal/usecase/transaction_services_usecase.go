@@ -27,9 +27,33 @@ func NewTransactionServicesUsecase(uow domain.UnitOfWork, tr domain.TransactionR
 	}
 }
 
-func (u *TransactionServicesUsecase) LockFundsServices(ctx context.Context, buyerID, sellerID string, amountBase int64, isRekberPay bool, sellerTier string, paymentMethod, idempotencyKey string) (*domain.Transaction, error) {
+func (u *TransactionServicesUsecase) LockFundsServices(ctx context.Context, buyerID, sellerID string, amountBase int64, isRekberPay bool, sellerTier string, paymentMethod, idempotencyKey string, detail *domain.TransactionServices, milestones []domain.ServiceMilestone) (*domain.Transaction, error) {
 	if amountBase <= 0 {
 		return nil, errors.New("service transaction amount must be greater than zero")
+	}
+	if detail == nil {
+		return nil, errors.New("services transaction detail (category, deadline, brief) is required")
+	}
+	if detail.SubSubCategoryID == 0 || detail.BriefDescription == "" || detail.ProjectDeadline.IsZero() {
+		return nil, errors.New("services detail requires sub_sub_category_id, project_deadline and brief_description")
+	}
+	if len(milestones) == 0 {
+		return nil, errors.New("services transaction requires at least one milestone")
+	}
+
+	// Money-safety invariant: the milestone breakdown must exactly cover the
+	// escrowed base amount, otherwise part of the escrow could become unreleasable.
+	var milestoneTotal int64
+	for i := range milestones {
+		if milestones[i].Amount <= 0 {
+			return nil, errors.New("each milestone amount must be greater than zero")
+		}
+		milestones[i].MilestoneIndex = i + 1
+		milestones[i].Status = "PENDING"
+		milestoneTotal += milestones[i].Amount
+	}
+	if milestoneTotal != amountBase {
+		return nil, fmt.Errorf("milestone total %d must equal the transaction base amount %d", milestoneTotal, amountBase)
 	}
 
 	// Member cap: a regular USER may sell up to MaxMemberEventLimit per transaction.
@@ -60,9 +84,22 @@ func (u *TransactionServicesUsecase) LockFundsServices(ctx context.Context, buye
 		IdempotencyKey:  idempotencyKey,
 		PaymentMethod:   paymentMethod,
 	}
+	detail.TransactionID = txMaster.ID
+	for i := range milestones {
+		milestones[i].ID = uuid.New().String()
+		milestones[i].TransactionID = txMaster.ID
+	}
 
-	if err := u.transactionRepo.CreateTransaction(ctx, txMaster); err != nil {
-		return nil, fmt.Errorf("failed to record service escrow transaction: %w", err)
+	// Master row + services detail + milestones commit atomically: releases
+	// are keyed on milestone rows, so a master without its breakdown would
+	// strand the escrow with nothing to release against.
+	if err := u.uow.Do(ctx, func(ctx context.Context, stores domain.TxStores) error {
+		if err := stores.Transactions.CreateTransaction(ctx, txMaster); err != nil {
+			return fmt.Errorf("failed to record service escrow transaction: %w", err)
+		}
+		return stores.Transactions.CreateServicesDetail(ctx, detail, milestones)
+	}); err != nil {
+		return nil, err
 	}
 	return txMaster, nil
 }

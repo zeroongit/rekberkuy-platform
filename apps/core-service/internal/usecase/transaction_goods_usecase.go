@@ -27,9 +27,18 @@ func NewTransactionGoodsUsecase(uow domain.UnitOfWork, tr domain.TransactionRepo
 	}
 }
 
-func (u *TransactionGoodsUsecase) LockFundsGoods(ctx context.Context, buyerID, sellerID string, amountBase int64, isRekberPay bool, sellerTier string, shippingFee int64, paymentMethod, idempotencyKey string) (*domain.Transaction, error) {
+func (u *TransactionGoodsUsecase) LockFundsGoods(ctx context.Context, buyerID, sellerID string, amountBase int64, isRekberPay bool, sellerTier string, shippingFee int64, paymentMethod, idempotencyKey string, detail *domain.TransactionGoods) (*domain.Transaction, error) {
 	if amountBase <= 0 {
 		return nil, errors.New("goods transaction amount must be greater than zero")
+	}
+	if detail == nil {
+		return nil, errors.New("goods transaction detail (category, shipping, auto-confirm deadline) is required")
+	}
+	if detail.SubSubCategoryID == 0 || detail.ShippingCourier == "" || detail.ShippingAddress == "" {
+		return nil, errors.New("goods detail requires sub_sub_category_id, shipping_courier and shipping_address")
+	}
+	if detail.AutoConfirmDeadline.IsZero() {
+		return nil, errors.New("goods detail requires a valid auto_confirm_deadline")
 	}
 
 	// Member cap: a regular USER may sell up to MaxMemberEventLimit per transaction.
@@ -60,9 +69,21 @@ func (u *TransactionGoodsUsecase) LockFundsGoods(ctx context.Context, buyerID, s
 		IdempotencyKey:  idempotencyKey,
 		PaymentMethod:   paymentMethod,
 	}
+	detail.TransactionID = txMaster.ID
 
-	if err := u.transactionRepo.CreateTransaction(ctx, txMaster); err != nil {
-		return nil, fmt.Errorf("failed to record goods escrow transaction: %w", err)
+	// Master row + goods detail container commit atomically: the detail's
+	// auto_confirm_deadline powers the auto-release worker, so a master row
+	// without its container would silently never auto-release.
+	if err := u.uow.Do(ctx, func(ctx context.Context, stores domain.TxStores) error {
+		if err := stores.Transactions.CreateTransaction(ctx, txMaster); err != nil {
+			return fmt.Errorf("failed to record goods escrow transaction: %w", err)
+		}
+		if err := stores.Transactions.CreateGoodsDetail(ctx, detail); err != nil {
+			return err
+		}
+		return nil
+	}); err != nil {
+		return nil, err
 	}
 	return txMaster, nil
 }

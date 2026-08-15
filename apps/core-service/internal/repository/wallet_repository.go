@@ -292,6 +292,31 @@ func (r *walletRepository) GetVendorAllocationsByTxID(ctx context.Context, trans
 	return allocations, nil
 }
 
+// MarkVendorAllocationClaimed draws down a vendor's pledge when their invoice
+// is paid: increments actual_paid_amount and flips status to CLAIMED once the
+// pledge is fully consumed.
+func (r *walletRepository) MarkVendorAllocationClaimed(ctx context.Context, transactionID, vendorID string, amount int64) error {
+	query := `
+		UPDATE event_vendor_allocations
+		SET actual_paid_amount = actual_paid_amount + $3,
+		    status = CASE
+		        WHEN actual_paid_amount + $3 >= allocated_amount THEN $4
+		        ELSE status
+		    END
+		WHERE transaction_id = $1 AND vendor_id = $2
+	`
+	var err error
+	if r.tx != nil {
+		_, err = r.tx.ExecContext(ctx, query, transactionID, vendorID, amount, domain.VendorAllocationClaimed)
+	} else {
+		_, err = r.db.ExecContext(ctx, query, transactionID, vendorID, amount, domain.VendorAllocationClaimed)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to mark vendor allocation claimed: %w", err)
+	}
+	return nil
+}
+
 // CreateVendorPayoutRecord records the official sub-vendor payment claim invoice to the database
 func (r *walletRepository) CreateVendorPayoutRecord(ctx context.Context, payout *domain.EventVendorPayout) error {
 	query := `
@@ -418,6 +443,163 @@ func (r *walletRepository) MarkWalletTxStatusByOrderID(ctx context.Context, orde
 	}
 	if err != nil {
 		return fmt.Errorf("failed to update top-up status: %w", err)
+	}
+	return nil
+}
+
+// GetWalletTxHistory returns the wallet ledger (newest first), paginated.
+func (r *walletRepository) GetWalletTxHistory(ctx context.Context, userID string, limit, offset int) ([]domain.RekberPayTransaction, error) {
+	query := `
+		SELECT id, wallet_id, type, status, amount, admin_fee, platform_net_profit,
+		       reference_transaction_id, midtrans_topup_id, description, created_at
+		FROM rekberpay_transactions
+		WHERE wallet_id = $1
+		ORDER BY created_at DESC
+		LIMIT $2 OFFSET $3
+	`
+	var rows *sql.Rows
+	var err error
+	if r.tx != nil {
+		rows, err = r.tx.QueryContext(ctx, query, userID, limit, offset)
+	} else {
+		rows, err = r.db.QueryContext(ctx, query, userID, limit, offset)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to query wallet history: %w", err)
+	}
+	defer rows.Close()
+
+	out := []domain.RekberPayTransaction{}
+	for rows.Next() {
+		var t domain.RekberPayTransaction
+		if err := rows.Scan(
+			&t.ID, &t.WalletID, &t.Type, &t.Status, &t.Amount, &t.AdminFee, &t.PlatformNetProfit,
+			&t.ReferenceTransactionID, &t.MidtransTopUpID, &t.Description, &t.CreatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan wallet history row: %w", err)
+		}
+		out = append(out, t)
+	}
+	return out, rows.Err()
+}
+
+const withdrawalColumns = `id, user_id, amount, fee, midtrans_cost, midtrans_cost_actual, bank_name, account_number, account_holder, status, processed_by, processed_at, created_at, updated_at`
+
+func scanWithdrawal(row interface{ Scan(...interface{}) error }) (*domain.WithdrawalRequest, error) {
+	var w domain.WithdrawalRequest
+	if err := row.Scan(
+		&w.ID, &w.UserID, &w.Amount, &w.Fee, &w.MidtransCost, &w.MidtransCostActual,
+		&w.BankName, &w.AccountNumber, &w.AccountHolder,
+		&w.Status, &w.ProcessedBy, &w.ProcessedAt, &w.CreatedAt, &w.UpdatedAt,
+	); err != nil {
+		return nil, err
+	}
+	return &w, nil
+}
+
+// CreateWithdrawalRequest stores a new withdrawal request. Must run inside the
+// same UnitOfWork as the wallet debit so balance + request commit atomically.
+func (r *walletRepository) CreateWithdrawalRequest(ctx context.Context, w *domain.WithdrawalRequest) error {
+	query := `
+		INSERT INTO withdrawals (id, user_id, amount, fee, midtrans_cost, bank_name, account_number, account_holder, status, created_at, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW(), NOW())
+	`
+	var err error
+	if r.tx != nil {
+		_, err = r.tx.ExecContext(ctx, query,
+			w.ID, w.UserID, w.Amount, w.Fee, w.MidtransCost, w.BankName, w.AccountNumber, w.AccountHolder, w.Status,
+		)
+	} else {
+		_, err = r.db.ExecContext(ctx, query,
+			w.ID, w.UserID, w.Amount, w.Fee, w.MidtransCost, w.BankName, w.AccountNumber, w.AccountHolder, w.Status,
+		)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to create withdrawal request: %w", err)
+	}
+	return nil
+}
+
+// GetWithdrawalByID fetches a withdrawal request, locking it inside a UoW.
+func (r *walletRepository) GetWithdrawalByID(ctx context.Context, id string) (*domain.WithdrawalRequest, error) {
+	query := `SELECT ` + withdrawalColumns + ` FROM withdrawals WHERE id = $1`
+	if r.tx != nil {
+		query += " FOR UPDATE"
+		return scanWithdrawal(r.tx.QueryRowContext(ctx, query, id))
+	}
+	return scanWithdrawal(r.db.QueryRowContext(ctx, query, id))
+}
+
+// ListWithdrawalsByUser returns a user's own withdrawal requests, newest first.
+func (r *walletRepository) ListWithdrawalsByUser(ctx context.Context, userID string, limit, offset int) ([]domain.WithdrawalRequest, error) {
+	query := `SELECT ` + withdrawalColumns + ` FROM withdrawals WHERE user_id = $1 ORDER BY created_at DESC LIMIT $2 OFFSET $3`
+	var rows *sql.Rows
+	var err error
+	if r.tx != nil {
+		rows, err = r.tx.QueryContext(ctx, query, userID, limit, offset)
+	} else {
+		rows, err = r.db.QueryContext(ctx, query, userID, limit, offset)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to list withdrawals for user: %w", err)
+	}
+	defer rows.Close()
+
+	out := []domain.WithdrawalRequest{}
+	for rows.Next() {
+		w, err := scanWithdrawal(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan withdrawal row: %w", err)
+		}
+		out = append(out, *w)
+	}
+	return out, rows.Err()
+}
+
+// ListPendingWithdrawals returns the admin's disbursement queue.
+func (r *walletRepository) ListPendingWithdrawals(ctx context.Context, limit, offset int) ([]domain.WithdrawalRequest, error) {
+	query := `SELECT ` + withdrawalColumns + ` FROM withdrawals WHERE status = 'PENDING' ORDER BY created_at ASC LIMIT $1 OFFSET $2`
+	var rows *sql.Rows
+	var err error
+	if r.tx != nil {
+		rows, err = r.tx.QueryContext(ctx, query, limit, offset)
+	} else {
+		rows, err = r.db.QueryContext(ctx, query, limit, offset)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to list pending withdrawals: %w", err)
+	}
+	defer rows.Close()
+
+	out := []domain.WithdrawalRequest{}
+	for rows.Next() {
+		w, err := scanWithdrawal(rows)
+		if err != nil {
+			return nil, fmt.Errorf("failed to scan withdrawal row: %w", err)
+		}
+		out = append(out, *w)
+	}
+	return out, rows.Err()
+}
+
+// MarkWithdrawalDisbursed records admin confirmation that the bank transfer
+// completed, persisting the ACTUAL disbursement cost for the ledger true-up.
+// The transfer itself happened out-of-band (ADR-0002 stance).
+func (r *walletRepository) MarkWithdrawalDisbursed(ctx context.Context, id string, adminID string, actualCost *int64) error {
+	query := `
+		UPDATE withdrawals
+		SET status = $1, processed_by = $2, processed_at = NOW(), updated_at = NOW(),
+		    midtrans_cost_actual = COALESCE($4, midtrans_cost)
+		WHERE id = $3
+	`
+	var err error
+	if r.tx != nil {
+		_, err = r.tx.ExecContext(ctx, query, domain.WithdrawalPaid, adminID, id, actualCost)
+	} else {
+		_, err = r.db.ExecContext(ctx, query, domain.WithdrawalPaid, adminID, id, actualCost)
+	}
+	if err != nil {
+		return fmt.Errorf("failed to mark withdrawal paid: %w", err)
 	}
 	return nil
 }

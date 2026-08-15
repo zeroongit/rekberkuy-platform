@@ -50,6 +50,22 @@ func (u *UserUsecase) TopUpWallet(ctx context.Context, userID string, amount int
 	return draft, &snap, nil
 }
 
+// GetWalletBalance returns the caller's RekberPay wallet (balance + frozen flag).
+func (u *UserUsecase) GetWalletBalance(ctx context.Context, userID string) (*domain.RekberPayWallet, error) {
+	return u.walletRepo.GetBalance(ctx, userID)
+}
+
+// GetWalletHistory returns the caller's wallet ledger (newest first).
+func (u *UserUsecase) GetWalletHistory(ctx context.Context, userID string, limit, offset int) ([]domain.RekberPayTransaction, error) {
+	if limit <= 0 || limit > 100 {
+		limit = 20
+	}
+	if offset < 0 {
+		offset = 0
+	}
+	return u.walletRepo.GetWalletTxHistory(ctx, userID, limit, offset)
+}
+
 // MarkTopUpFailed marks the top-up draft as FAILED (payment deny/expire/cancel).
 func (u *UserUsecase) MarkTopUpFailed(ctx context.Context, orderID string) error {
 	return u.walletRepo.MarkWalletTxStatusByOrderID(ctx, orderID, domain.WalletStatusFailed)

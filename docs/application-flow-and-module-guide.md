@@ -27,8 +27,44 @@ WAITING_PAYMENT ──(payment confirmed)──► FUNDS_LOCKED ──(confirm r
                                               │
                                      (dispute / complaint)
                                               ▼
-                                          DISPUTED ──(admin / AI resolution)──► REFUNDED  (funds returned)
+                                             DISPUTED ──(admin resolution)──► REFUNDED  (funds returned)
+ ```
+ ---
+ 
+## AI-Assisted Admin Verification — Current Status
+
+`backend-ai` is a **scoring-only** service — it never makes a decision. For every capability it supports, `core-service` (or a human Admin) is the sole decision-maker: `backend-ai` returns a number, `core-service` compares it against its own threshold.
+
+| Capability | Status | Notes |
+|---|---|---|
+| **Fraud scoring** | ✅ Implemented & wired | Called before every fund release: `ReleaseFundsGoods`, `ReleaseMilestoneServices`, `ReleaseFundsEvents`, and `ProcessEventVendorPayout` (external vendor payouts). |
+| **KYC verification** | ✅ Implemented & wired | On `POST /api/v1/kyc/submit`, `kyc_usecase.go` calls `POST /api/v1/kyc/verify` and stores the returned confidence as `ai_score`/`ai_reason` **reference columns** (nullable — an unreachable AI never blocks the submission). The verdict is the Admin's: `POST /api/v1/admin/kyc/:id/review` flips `KYCApproved`/`KYCRejected` and, on approval, promotes the user to the submission's `target_role` in the same UnitOfWork. |
+| **Dispute resolution** | 🚫 Deliberately not AI-assisted | By design, per [ADR-0003](./adr/0003-admin-mediated-dispute-resolution-ai-deferred.md): an Admin sets the binding `Outcome` (`REFUND_BUYER` / `RELEASE_TO_SELLER`) manually. `dispute_usecase.go` never calls `backend-ai`. |
+
+### Verification chain (fraud scoring — the only capability actually wired end-to-end)
+
+Every fund release runs this exact sequence (see e.g. `TransactionGoodsUsecase.ReleaseFundsGoods`):
+
 ```
+core-service                    backend-ai                  core-service                blockchain
+     │                               │                            │                          │
+     ├── POST /api/v1/fraud/score ──►│                            │                          │
+     │                               ├── Groq scoring ────────────│                          │
+     │◄── { score, reason } ─────────┤                            │                          │
+     ├── compute isSafe (score ≥ FRAUD_UNSAFE_THRESHOLD) ─────────►│                          │
+     │                                                             │                          │
+     │        isSafe == false  ──► release REFUSED, nothing moves, blockchain untouched        │
+     │        isSafe == true   ──► ACID mutation (wallet credit + status RELEASED, in Postgres) │
+     │                                                             ├── logTransaction() ──────►│
+     │                                                             │   (best-effort; audit hash only, no PII)
+```
+
+Two properties worth calling out:
+
+- **`backend-ai` never decides.** It cannot flag a transaction unsafe on its own; `isSafe` is computed inside `core-service` from `cfg.AI.UnsafeThreshold`. If `backend-ai` is unreachable, `core-service`'s own `FRAUD_FAIL_OPEN` policy decides (default `false` — fail-closed, refuse the release).
+- **Blockchain is a downstream side-effect, not a payment step.** Money already moved in Postgres (wallet balances, transaction status) *before* `logTransaction()` is called. The on-chain call is a best-effort, immutable receipt of a transaction that already happened — never a payment method and never a precondition for the money to move.
+
+---
 
 | Status | Meaning |
 |--------|---------|
@@ -213,7 +249,7 @@ The backend (`apps/core-service/`) follows **Clean Architecture**: `delivery/han
 
 | Service | Stack | Role |
 |---------|-------|------|
-| `backend-ai/` | Python 3.11 / FastAPI / Groq | KYC verification scoring + fraud risk analysis (called by `fraud/client.go`) |
+| `backend-ai/` | Python 3.11 / FastAPI / Groq | Fraud risk scoring (called by `fraud/client.go`) + KYC verification confidence (called by `kyc/client.go` at submission time, stored as an admin reference) — see [AI-Assisted Admin Verification](#ai-assisted-admin-verification--current-status) below. |
 | `blockchain/` | Solidity / Hardhat v3 / Avalanche | Audit-log smart contract `TransactionLogger` (called by `relayer/relayer.go`) |
 
 ---

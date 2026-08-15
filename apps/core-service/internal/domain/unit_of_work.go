@@ -19,6 +19,7 @@ type TxStores struct {
 	Transactions TransactionRepository
 	Finance      FinanceRepository
 	Disputes     DisputeRepository
+	KYC          KYCRepository
 }
 
 // UnitOfWork is the cross-repository transactional boundary contract.

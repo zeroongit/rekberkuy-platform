@@ -1,6 +1,9 @@
 package domain
 
-import "time"
+import (
+	"context"
+	"time"
+)
 
 // ============================================================================
 // 🛍️ GOODS CATEGORY
@@ -115,5 +118,14 @@ type VendorSubSubCategory struct {
 	SubCategory   VendorSubCategory `gorm:"foreignKey:SubCategoryID;constraint:OnDelete:CASCADE" json:"-"`
 	Name          string            `gorm:"type:varchar(100);not null" json:"name"` // e.g. "Line Array System"
 	Slug          string            `gorm:"type:varchar(100);not null;unique" json:"slug"`
-	CreatedAt     time.Time         `gorm:"default:now()" json:"created_at"`
+	CreatedAt     time.Time         `json:"created_at"`
+}
+
+// CategoryRepository is the read port for the 3-tier taxonomy (seeded via
+// cmd/seed). Read-only: categories are curated platform data, not user-created.
+type CategoryRepository interface {
+	ListGoodsCategories(ctx context.Context) ([]GoodsCategory, error)
+	ListServiceCategories(ctx context.Context) ([]ServiceCategory, error)
+	ListEventCategories(ctx context.Context) ([]EventCategory, error)
+	ListVendorSubCategories(ctx context.Context) ([]VendorSubCategory, error)
 }

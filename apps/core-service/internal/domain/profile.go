@@ -61,12 +61,17 @@ type KYCSubmission struct {
 	IDCardURL    string       `gorm:"type:text;not null" json:"id_card_url"`
 	SelfieURL    string       `gorm:"type:text;not null" json:"selfie_url"`
 	Status       KYCStatus    `gorm:"type:varchar(50);not null;default:'PENDING'" json:"status"`
-	AdminNotes   *string      `gorm:"type:text" json:"admin_notes,omitempty"`
-	ReviewedBy   *string      `gorm:"type:uuid" json:"reviewed_by,omitempty"`
-	Reviewer     *UserProfile `gorm:"foreignKey:ReviewedBy"`
-	ReviewedAt   *time.Time   `json:"reviewed_at,omitempty"`
-	CreatedAt    time.Time    `gorm:"default:now()" json:"created_at"`
-	UpdatedAt    time.Time    `gorm:"default:now()" json:"updated_at"`
+	// AIScore/AIReason store the backend-ai verification REFERENCE (confidence,
+	// 0-1). Nullable: the AI service may be unreachable at submission time and
+	// the admin remains the sole decision maker either way.
+	AIScore     *float64     `gorm:"type:double precision" json:"ai_score,omitempty"`
+	AIReason    *string      `gorm:"type:text" json:"ai_reason,omitempty"`
+	AdminNotes  *string      `gorm:"type:text" json:"admin_notes,omitempty"`
+	ReviewedBy  *string      `gorm:"type:uuid" json:"reviewed_by,omitempty"`
+	Reviewer    *UserProfile `gorm:"foreignKey:ReviewedBy"`
+	ReviewedAt  *time.Time   `json:"reviewed_at,omitempty"`
+	CreatedAt   time.Time    `gorm:"default:now()" json:"created_at"`
+	UpdatedAt   time.Time    `gorm:"default:now()" json:"updated_at"`
 }
 
 type EOProfile = VendorProfile
@@ -84,12 +89,26 @@ type UserRepository interface {
 	CreateProfile(ctx context.Context, user *UserProfile) error
 	GetProfileByID(ctx context.Context, id string) (*UserProfile, error)
 	GetProfileByEmail(ctx context.Context, email string) (*UserProfile, error)
+	// UpdateUserRole promotes (or demotes) a user's role. Used by the admin
+	// KYC review flow when a submission is approved.
+	UpdateUserRole(ctx context.Context, id string, role UserRole) error
 }
 
 type KYCRepository interface {
 	SubmitKYC(ctx context.Context, kyc *KYCSubmission) error
+	GetKYCByID(ctx context.Context, id string) (*KYCSubmission, error)
+	ListPendingKYCs(ctx context.Context) ([]KYCSubmission, error)
+	// SaveKYCAIResult persists the backend-ai verification reference (score +
+	// reason) onto the user's submission. The score is a reference only.
+	SaveKYCAIResult(ctx context.Context, userID string, score float64, reason string) error
+	// ReviewKYC records the ADMIN decision: status (APPROVED/REJECTED),
+	// reviewer id, notes and timestamp. Must be called inside a UnitOfWork.
+	ReviewKYC(ctx context.Context, id string, status KYCStatus, adminID string, notes string) error
 }
 
 type VendorRepository interface {
 	CreateVendor(ctx context.Context, vendor *VendorProfile) error
+	// ListVendors returns marketplace vendors, optionally filtered by category
+	// slug (empty = all), newest first.
+	ListVendors(ctx context.Context, category string, limit, offset int) ([]VendorProfile, error)
 }

@@ -36,6 +36,7 @@ func TestLockFundsGoods_Success(t *testing.T) {
 		10000,
 		"REKBERPAY",
 		"idem-key-goods-01",
+		validGoodsDetail(),
 	)
 
 	if err != nil {
@@ -71,7 +72,7 @@ func TestLockFundsGoods_InvalidAmount(t *testing.T) {
 	txRepo := &mockTransactionRepo{}
 	u := usecase.NewTransactionGoodsUsecase(newMockUnitOfWork(txRepo, &mockWalletRepo{}, &mockFinanceRepo{}, nil), txRepo, usecase.NewFinanceCalculator(), &mockFraudClient{}, &mockRelayer{})
 
-	_, err := u.LockFundsGoods(ctx, "b-id", "s-id", 0, true, "BRONZE", 10000, "REKBERPAY", "idem-02")
+	_, err := u.LockFundsGoods(ctx, "b-id", "s-id", 0, true, "BRONZE", 10000, "REKBERPAY", "idem-02", validGoodsDetail())
 	if err == nil {
 		t.Fatal("expected error because goods transaction amount = 0, but got nil")
 	}
@@ -86,7 +87,7 @@ func TestLockFundsGoods_CreateTransactionError(t *testing.T) {
 	}
 	u := usecase.NewTransactionGoodsUsecase(newMockUnitOfWork(txRepo, &mockWalletRepo{}, &mockFinanceRepo{}, nil), txRepo, usecase.NewFinanceCalculator(), &mockFraudClient{}, &mockRelayer{})
 
-	_, err := u.LockFundsGoods(ctx, "b-id", "s-id", 50000, true, "BRONZE", 0, "REKBERPAY", "idem-err")
+	_, err := u.LockFundsGoods(ctx, "b-id", "s-id", 50000, true, "BRONZE", 0, "REKBERPAY", "idem-err", validGoodsDetail())
 	if err == nil {
 		t.Fatal("expected error when CreateTransaction fails")
 	}
@@ -243,7 +244,7 @@ func TestLockFundsGoods_UserSellerOverCapRejected(t *testing.T) {
 	u := usecase.NewTransactionGoodsUsecase(newMockUnitOfWork(&mockTransactionRepo{}, &mockWalletRepo{}, &mockFinanceRepo{}, userRepo), &mockTransactionRepo{}, usecase.NewFinanceCalculator(), &mockFraudClient{}, &mockRelayer{})
 
 	// 15M > 10M cap, seller is a regular USER -> must be rejected.
-	if _, err := u.LockFundsGoods(ctx, "buyer-1", "user-seller", 15000000, true, "BRONZE", 0, "REKBERPAY", "idem-cap-1"); err == nil {
+	if _, err := u.LockFundsGoods(ctx, "buyer-1", "user-seller", 15000000, true, "BRONZE", 0, "REKBERPAY", "idem-cap-1", validGoodsDetail()); err == nil {
 		t.Fatal("expected error: regular USER seller over the 10M cap must be rejected")
 	}
 }
@@ -254,7 +255,7 @@ func TestLockFundsGoods_UserSellerAtCapAllowed(t *testing.T) {
 	// user repo is fine — and proves the boundary is inclusive.
 	u := usecase.NewTransactionGoodsUsecase(newMockUnitOfWork(&mockTransactionRepo{}, &mockWalletRepo{}, &mockFinanceRepo{}, nil), &mockTransactionRepo{}, usecase.NewFinanceCalculator(), &mockFraudClient{}, &mockRelayer{})
 
-	if _, err := u.LockFundsGoods(ctx, "buyer-1", "user-seller", domain.MaxMemberEventLimit, true, "BRONZE", 0, "REKBERPAY", "idem-cap-2"); err != nil {
+	if _, err := u.LockFundsGoods(ctx, "buyer-1", "user-seller", domain.MaxMemberEventLimit, true, "BRONZE", 0, "REKBERPAY", "idem-cap-2", validGoodsDetail()); err != nil {
 		t.Fatalf("expected success at exactly the 10M cap, got: %v", err)
 	}
 }
@@ -269,7 +270,7 @@ func TestLockFundsGoods_VerifiedSellerOverCapAllowed(t *testing.T) {
 	u := usecase.NewTransactionGoodsUsecase(newMockUnitOfWork(&mockTransactionRepo{}, &mockWalletRepo{}, &mockFinanceRepo{}, userRepo), &mockTransactionRepo{}, usecase.NewFinanceCalculator(), &mockFraudClient{}, &mockRelayer{})
 
 	// 15M over the cap, but the seller is a Verified Merchant -> allowed.
-	if _, err := u.LockFundsGoods(ctx, "buyer-1", "verified-seller", 15000000, true, "GOLD", 0, "REKBERPAY", "idem-cap-3"); err != nil {
+	if _, err := u.LockFundsGoods(ctx, "buyer-1", "verified-seller", 15000000, true, "GOLD", 0, "REKBERPAY", "idem-cap-3", validGoodsDetail()); err != nil {
 		t.Fatalf("expected verified merchant to be allowed over the cap, got: %v", err)
 	}
 }

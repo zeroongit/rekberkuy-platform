@@ -35,6 +35,7 @@ func (uow *sqlUnitOfWork) Do(ctx context.Context, fn func(ctx context.Context, s
 		Transactions: &TransactionRepository{db: uow.db, tx: tx},
 		Finance:      &financeRepository{db: uow.db, tx: tx},
 		Disputes:     &disputeRepository{db: uow.db, tx: tx},
+		KYC:          &kycRepository{db: uow.db, tx: tx},
 	}
 
 	if err := fn(ctx, stores); err != nil {

@@ -36,6 +36,12 @@ const (
 	VendorPayoutDisbursed           = "DISBURSED"            // External vendor paid out-of-band; terminal
 )
 
+// Status for EventVendorAllocation (the EO's vendor pledge).
+const (
+	VendorAllocationPledged  = "PLEDGED"  // Reserved against the escrow, invoice not yet claimed
+	VendorAllocationClaimed  = "CLAIMED"  // A vendor invoice has drawn down (part of) the pledge
+)
+
 type Transaction struct {
 	ID                 string            `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	BuyerID            string            `gorm:"type:uuid;not null;index" json:"buyer_id"`
@@ -151,6 +157,19 @@ type TransactionRepository interface {
 	UpdateTransactionStatus(ctx context.Context, id string, status TransactionStatus) error
 	GetExpiredLockedTransactions(ctx context.Context) ([]string, error)
 
+	// Detail-container write paths. The type-specific detail row (plus its
+	// milestones / vendor allocations) must be created inside the same UnitOfWork
+	// as the master `transactions` row so the container can never reference a
+	// master that rolled back (or vice versa).
+	CreateGoodsDetail(ctx context.Context, tg *TransactionGoods) error
+	CreateServicesDetail(ctx context.Context, ts *TransactionServices, milestones []ServiceMilestone) error
+	CreateEventsDetail(ctx context.Context, te *TransactionEvents, allocations []EventVendorAllocation) error
+
+	// GetActiveEventVendorPayoutsTotal returns the sum of amount_requested over
+	// all payouts of an event transaction that have not reached DISBURSED/
+	// terminal state — used to cap new invoice submissions against the escrow.
+	GetActiveEventVendorPayoutsTotal(ctx context.Context, txID string) (int64, error)
+
 	// GetReleasedMilestonesTotalByTxID returns the sum of amounts of milestones
 	// already RELEASED for a services transaction. Used to compute the escrow that
 	// remains held when refunding a disputed transaction, so a refund never pays
@@ -170,4 +189,11 @@ type TransactionRepository interface {
 	// UpdateBlockchainLog stores the on-chain audit-log hash & timestamp after
 	// the relayer successfully records the transaction to Avalanche.
 	UpdateBlockchainLog(ctx context.Context, txID string, txHash string) error
+
+	// Read paths for the user-facing transaction APIs.
+	ListTransactionsByUser(ctx context.Context, userID string, limit, offset int) ([]Transaction, error)
+	GetGoodsDetailByTxID(ctx context.Context, txID string) (*TransactionGoods, error)
+	GetServicesDetailByTxID(ctx context.Context, txID string) (*TransactionServices, error)
+	GetMilestonesByTxID(ctx context.Context, txID string) ([]ServiceMilestone, error)
+	GetEventsDetailByTxID(ctx context.Context, txID string) (*TransactionEvents, error)
 }

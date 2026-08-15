@@ -81,6 +81,11 @@ type MidtransConfig struct {
 	ClientKey   string
 	Environment string // sandbox | production
 	WebhookKey  string
+	// DisbursementFee is the ESTIMATED Midtrans disbursement cost per wallet
+	// withdrawal, booked at request time. The user-facing gross fee
+	// (domain.WithdrawFeeToUser) already covers it; the ledger is trued-up to
+	// the real cost when the disbursement is confirmed.
+	DisbursementFee int64
 }
 
 type SMTPConfig struct {
@@ -136,10 +141,11 @@ func LoadConfig() *Config {
 			ChainID:            getEnvInt64("AVALANCHE_CHAIN_ID", 43113), // Fuji testnet default
 		},
 		Midtrans: MidtransConfig{
-			ServerKey:   getEnv("MIDTRANS_SERVER_KEY", ""),
-			ClientKey:   getEnv("MIDTRANS_CLIENT_KEY", ""),
-			Environment: getEnv("MIDTRANS_ENVIRONMENT", "sandbox"),
-			WebhookKey:  getEnv("MIDTRANS_WEBHOOK_KEY", ""),
+			ServerKey:       getEnv("MIDTRANS_SERVER_KEY", ""),
+			ClientKey:       getEnv("MIDTRANS_CLIENT_KEY", ""),
+			Environment:     getEnv("MIDTRANS_ENVIRONMENT", "sandbox"),
+			WebhookKey:      getEnv("MIDTRANS_WEBHOOK_KEY", ""),
+			DisbursementFee: getEnvInt64("MIDTRANS_DISBURSEMENT_FEE", 4000),
 		},
 		SMTP: SMTPConfig{
 			Host: getEnv("SMTP_HOST", ""),
