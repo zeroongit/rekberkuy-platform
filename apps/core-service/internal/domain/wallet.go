@@ -69,6 +69,11 @@ type WalletRepository interface {
 	GetCRMLoyaltyByUserID(ctx context.Context, userID string) (*CRMLoyalty, error)
 	UpdateCRMLoyalty(ctx context.Context, crmProfile *CRMLoyalty) error
 	GetVendorAllocationsByTxID(ctx context.Context, transactionID string) ([]*EventVendorAllocation, error)
+	// MarkVendorAllocationClaimed records that a vendor invoice drew down (part
+	// of) the vendor's pledge: increments actual_paid_amount and flips the
+	// status to CLAIMED once the pledge is fully consumed. Keeps pledge
+	// reservations from blocking future invoices after they are settled.
+	MarkVendorAllocationClaimed(ctx context.Context, transactionID, vendorID string, amount int64) error
 	CreateVendorPayoutRecord(ctx context.Context, payout *EventVendorPayout) error
 	GetVendorPayoutByID(ctx context.Context, payoutID string) (*EventVendorPayout, error)
 	UpdateVendorPayoutStatus(ctx context.Context, payoutID string, status string) error
@@ -76,4 +81,45 @@ type WalletRepository interface {
 	GetWalletTxByMidtransOrderID(ctx context.Context, orderID string) (*RekberPayTransaction, error)
 	// MarkWalletTxStatusByOrderID updates the status of the top-up transaction row (PENDING -> SUCCESS/FAILED).
 	MarkWalletTxStatusByOrderID(ctx context.Context, orderID string, status WalletTxStatus) error
+	// GetWalletTxHistory returns the wallet ledger (newest first) for a user.
+	GetWalletTxHistory(ctx context.Context, userID string, limit, offset int) ([]RekberPayTransaction, error)
+
+	// Withdrawal lifecycle. The bank transfer itself happens out-of-band
+	// (same stance as ADR-0002); these records track the request state.
+	CreateWithdrawalRequest(ctx context.Context, w *WithdrawalRequest) error
+	GetWithdrawalByID(ctx context.Context, id string) (*WithdrawalRequest, error)
+	ListWithdrawalsByUser(ctx context.Context, userID string, limit, offset int) ([]WithdrawalRequest, error)
+	ListPendingWithdrawals(ctx context.Context, limit, offset int) ([]WithdrawalRequest, error)
+	// MarkWithdrawalDisbursed records that the bank transfer completed and the
+	// admin confirmed it. actualCost (nullable) persists the REAL Midtrans fee
+	// for the ledger true-up; nil keeps the booked estimate.
+	MarkWithdrawalDisbursed(ctx context.Context, id string, adminID string, actualCost *int64) error
+}
+
+// WithdrawalStatus tracks a wallet withdrawal request. The wallet balance is
+// debited immediately (amount + WithdrawFeeToUser); the bank payout completes
+// out-of-band and is confirmed by an admin.
+type WithdrawalStatus string
+
+const (
+	WithdrawalPending WithdrawalStatus = "PENDING"
+	WithdrawalPaid    WithdrawalStatus = "PAID"
+)
+
+type WithdrawalRequest struct {
+	ID             string           `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
+	UserID         string           `gorm:"type:uuid;not null;index" json:"user_id"`
+	UserProfile    UserProfile      `gorm:"foreignKey:UserID"`
+	Amount         int64            `gorm:"type:bigint;not null" json:"amount"`
+	Fee            int64            `gorm:"type:bigint;not null" json:"fee"` // GROSS user-facing fee (WithdrawFeeToUser)
+	MidtransCost   int64            `gorm:"type:bigint;not null;default:0" json:"midtrans_cost"`
+	MidtransCostActual *int64       `gorm:"type:bigint" json:"midtrans_cost_actual,omitempty"` // real cost, set at true-up; nil = still estimated
+	BankName       string           `gorm:"type:varchar(100);not null" json:"bank_name"`
+	AccountNumber  string           `gorm:"type:varchar(100);not null" json:"account_number"`
+	AccountHolder  string           `gorm:"type:varchar(255);not null" json:"account_holder"`
+	Status         WithdrawalStatus `gorm:"type:varchar(50);not null;default:'PENDING'" json:"status"`
+	ProcessedBy    *string          `gorm:"type:uuid" json:"processed_by,omitempty"`
+	ProcessedAt    *time.Time       `json:"processed_at,omitempty"`
+	CreatedAt      time.Time        `gorm:"default:now()" json:"created_at"`
+	UpdatedAt      time.Time        `gorm:"default:now()" json:"updated_at"`
 }
