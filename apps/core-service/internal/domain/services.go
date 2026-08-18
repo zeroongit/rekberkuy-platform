@@ -1,6 +1,9 @@
 package domain
 
-import "context"
+import (
+	"context"
+	"time"
+)
 
 // This file holds the PORTS (interface contracts) for external services.
 // Ports are defined in the domain (not in the adapter package) so that the usecase
@@ -36,6 +39,18 @@ type Relayer interface {
 	// LogTransactionOnChain records a completed transaction as an on-chain audit log
 	// and returns the transaction hash to be stored in the DB.
 	LogTransactionOnChain(ctx context.Context, txID string, amount int64, buyer string, seller string) (txHash string, err error)
+
+	// FindLoggedTransaction scans historical TransactionLogged events for txID
+	// (matched by the keccak256(txID) topic), starting from the `since` wall-clock
+	// lower bound, and returns the on-chain tx hash of the earliest recording.
+	//
+	// Semantics that callers MUST respect:
+	//   - found=true  : the event is on-chain; persist the hash, never re-log.
+	//   - found=false, err=nil : the scan range definitively contains no event;
+	//     re-logging is safe (the original broadcast never landed).
+	//   - err != nil  : UNKNOWN (RPC failure, range cap hit mid-scan). This is NOT
+	//     "not found" — re-logging on a guess could duplicate an append-only entry.
+	FindLoggedTransaction(ctx context.Context, txID string, since time.Time) (txHash string, found bool, err error)
 }
 
 // MidtransClient is the Midtrans payment-gateway port (Snap Token + webhook).

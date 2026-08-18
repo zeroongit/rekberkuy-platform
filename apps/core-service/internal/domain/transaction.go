@@ -196,4 +196,12 @@ type TransactionRepository interface {
 	GetServicesDetailByTxID(ctx context.Context, txID string) (*TransactionServices, error)
 	GetMilestonesByTxID(ctx context.Context, txID string) ([]ServiceMilestone, error)
 	GetEventsDetailByTxID(ctx context.Context, txID string) (*TransactionEvents, error)
+
+	// GetReleasedTransactionsMissingChainLog returns RELEASED transactions whose
+	// on-chain audit hash was never persisted (blockchain_tx_hash IS NULL) —
+	// the reconciler's scan list. Rows newer than a grace window are excluded:
+	// logAuditOnChain runs asynchronously right after release, so a fresh gap
+	// may simply be an in-flight attempt, not a failure. Oldest first, capped
+	// per cycle so one reconciliation run cannot flood the RPC provider.
+	GetReleasedTransactionsMissingChainLog(ctx context.Context) ([]Transaction, error)
 }

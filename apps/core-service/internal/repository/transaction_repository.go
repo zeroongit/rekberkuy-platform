@@ -550,6 +550,56 @@ func (r *TransactionRepository) GetEventsDetailByTxID(ctx context.Context, txID 
 	return &te, nil
 }
 
+// GetReleasedTransactionsMissingChainLog returns the reconciler's scan list:
+// RELEASED transactions whose on-chain audit hash was never persisted.
+//
+// The 1-hour grace window excludes freshly-released rows — logAuditOnChain
+// runs asynchronously right after release, so a brand-new gap is usually an
+// in-flight attempt, and re-logging while the original broadcast is still
+// pending would duplicate the append-only entry. Oldest gaps first, capped at
+// 20 per cycle so one run cannot flood the RPC provider (the remainder is
+// picked up by the next cycle).
+func (r *TransactionRepository) GetReleasedTransactionsMissingChainLog(ctx context.Context) ([]domain.Transaction, error) {
+	query := `
+		SELECT id, buyer_id, seller_id, type, status, amount_base, shipping_fee,
+		       service_fee, midtrans_fee, amount_gross, amount_net,
+		       midtrans_order_id, idempotency_key, payment_method,
+		       blockchain_tx_hash, blockchain_logged_at, created_at, updated_at
+		FROM transactions
+		WHERE status = 'RELEASED'
+		  AND blockchain_tx_hash IS NULL
+		  AND updated_at < NOW() - INTERVAL '1 hour'
+		ORDER BY updated_at ASC
+		LIMIT 20
+	`
+	var rows *sql.Rows
+	var err error
+	if r.tx != nil {
+		rows, err = r.tx.QueryContext(ctx, query)
+	} else {
+		rows, err = r.db.QueryContext(ctx, query)
+	}
+	if err != nil {
+		return nil, fmt.Errorf("failed to scan for transactions missing chain log: %w", err)
+	}
+	defer rows.Close()
+
+	out := []domain.Transaction{}
+	for rows.Next() {
+		var tx domain.Transaction
+		if err := rows.Scan(
+			&tx.ID, &tx.BuyerID, &tx.SellerID, &tx.Type, &tx.Status, &tx.AmountBase, &tx.ShippingFee,
+			&tx.ServiceFee, &tx.MidtransFee, &tx.AmountGross, &tx.AmountNet,
+			&tx.MidtransOrderID, &tx.IdempotencyKey, &tx.PaymentMethod,
+			&tx.BlockchainTxHash, &tx.BlockchainLoggedAt, &tx.CreatedAt, &tx.UpdatedAt,
+		); err != nil {
+			return nil, fmt.Errorf("failed to scan missing-chain-log row: %w", err)
+		}
+		out = append(out, tx)
+	}
+	return out, rows.Err()
+}
+
 // UpdateBlockchainLog stores the on-chain audit-log hash & recording timestamp.
 func (r *TransactionRepository) UpdateBlockchainLog(ctx context.Context, txID string, txHash string) error {
 	query := `
