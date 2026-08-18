@@ -1,0 +1,32 @@
+# syntax=docker/dockerfile:1
+
+# ---- Build stage -------------------------------------------------------
+    FROM golang:1.25-bookworm AS build
+    WORKDIR /src
+    
+    # Cache dependency downloads separately from source changes.
+    COPY go.mod go.sum ./
+    RUN go mod download
+    
+    COPY . .
+    
+    # Static binary (CGO off), server binary + one-off migrate/seed tools.
+    ENV CGO_ENABLED=0 GOOS=linux
+    RUN go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server && \
+        go build -trimpath -ldflags="-s -w" -o /out/migrate ./cmd/migrate && \
+        go build -trimpath -ldflags="-s -w" -o /out/seed ./cmd/seed
+    
+    # ---- Runtime stage -------------------------------------------------------
+    # distroless: no shell, no package manager — smaller attack surface than
+    # a full debian/alpine image for a service that never needs one at runtime.
+    FROM gcr.io/distroless/static-debian12:nonroot AS runtime
+    WORKDIR /app
+    
+    COPY --from=build /out/server /app/server
+    COPY --from=build /out/migrate /app/migrate
+    COPY --from=build /out/seed /app/seed
+    
+    USER nonroot:nonroot
+    EXPOSE 8080
+    
+    ENTRYPOINT ["/app/server"]

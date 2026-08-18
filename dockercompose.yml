@@ -1,0 +1,125 @@
+# RekberKuy Platform — VPS deployment via Docker Compose.
+#
+# Usage:
+#   cp .env.compose.example .env
+#   # fill in real secrets in .env, then:
+#   docker compose run --rm migrate   # apply DB schema (one-off, review before running)
+#   docker compose up -d --build
+#
+# backend-ai is intentionally NOT published to the host — core-service is its
+# only caller (AI_SERVICE_URL=http://backend-ai:8081, the Compose DNS name),
+# so it never needs to be reachable from outside the Docker network.
+#
+# Postgres/Redis run as local containers here for a fully self-contained VPS
+# setup. If you'd rather keep using managed Supabase Postgres instead, delete
+# the `postgres` service below and point DATABASE_URL (in .env) at your
+# Supabase connection string — core-service supports both (see
+# apps/core-service/.env.example).
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-rekberkuy}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env}
+      POSTGRES_DB: ${POSTGRES_DB:-rekberkuy}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-rekberkuy}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks: [internal]
+
+  # One-off: `docker compose run --rm migrate`. Not started by `up` — schema
+  # changes should be a deliberate, reviewed step, never an automatic
+  # side-effect of restarting the stack.
+  migrate:
+    build:
+      context: ./apps/core-service
+    image: rekberkuy/core-service:latest
+    env_file: .env
+    entrypoint: ["/app/migrate", "up"]
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks: [internal]
+    profiles: ["tools"]
+
+  core-service:
+    build:
+      context: ./apps/core-service
+    image: rekberkuy/core-service:latest
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      AI_SERVICE_URL: http://backend-ai:8081
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      backend-ai:
+        condition: service_started
+    networks: [internal]
+    # Not published directly — routed through nginx at /api. Uncomment for
+    # direct host access during initial setup/debugging:
+    # ports: ["8080:8080"]
+
+  backend-ai:
+    build:
+      context: ./backend-ai
+    image: rekberkuy/backend-ai:latest
+    restart: unless-stopped
+    env_file: backend-ai/.env
+    networks: [internal]
+    # No `ports:` — internal-only, see note at top of file.
+
+  dashboard-web:
+    build:
+      context: ./apps/dashboard-web
+      args:
+        NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-https://your-domain.example/api}
+        NEXT_PUBLIC_SUPABASE_URL: ${NEXT_PUBLIC_SUPABASE_URL:-}
+        NEXT_PUBLIC_SUPABASE_ANON_KEY: ${NEXT_PUBLIC_SUPABASE_ANON_KEY:-}
+        NEXT_PUBLIC_MIDTRANS_CLIENT_KEY: ${NEXT_PUBLIC_MIDTRANS_CLIENT_KEY:-}
+        NEXT_PUBLIC_MIDTRANS_ENVIRONMENT: ${NEXT_PUBLIC_MIDTRANS_ENVIRONMENT:-sandbox}
+    image: rekberkuy/dashboard-web:latest
+    restart: unless-stopped
+    networks: [internal]
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      # Add 443 + a TLS cert volume (e.g. certbot) once you're ready for
+      # HTTPS — see nginx/README.md.
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - core-service
+      - dashboard-web
+    networks: [internal]
+
+networks:
+  internal:
+
+volumes:
+  postgres_data:
+  redis_data:

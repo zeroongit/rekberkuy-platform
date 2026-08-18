@@ -1,0 +1,45 @@
+# syntax=docker/dockerfile:1
+
+# ---- Dependencies stage --------------------------------------------------
+    FROM node:20-bookworm-slim AS deps
+    WORKDIR /app
+    COPY package.json package-lock.json ./
+    RUN npm ci
+    
+    # ---- Build stage ----------------------------------------------------------
+    FROM node:20-bookworm-slim AS build
+    WORKDIR /app
+    COPY --from=deps /app/node_modules ./node_modules
+    COPY . .
+    # Public runtime env (NEXT_PUBLIC_*) must be present at BUILD time, not just
+    # runtime — Next.js inlines them into the client bundle during `next build`.
+    # Keep this list in sync with apps/dashboard-web/.env.example.
+    ARG NEXT_PUBLIC_API_URL
+    ARG NEXT_PUBLIC_SUPABASE_URL
+    ARG NEXT_PUBLIC_SUPABASE_ANON_KEY
+    ARG NEXT_PUBLIC_MIDTRANS_CLIENT_KEY
+    ARG NEXT_PUBLIC_MIDTRANS_ENVIRONMENT
+    ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL \
+        NEXT_PUBLIC_SUPABASE_URL=$NEXT_PUBLIC_SUPABASE_URL \
+        NEXT_PUBLIC_SUPABASE_ANON_KEY=$NEXT_PUBLIC_SUPABASE_ANON_KEY \
+        NEXT_PUBLIC_MIDTRANS_CLIENT_KEY=$NEXT_PUBLIC_MIDTRANS_CLIENT_KEY \
+        NEXT_PUBLIC_MIDTRANS_ENVIRONMENT=$NEXT_PUBLIC_MIDTRANS_ENVIRONMENT
+    RUN npm run build
+    
+    # ---- Runtime stage ----------------------------------------------------------
+    FROM node:20-bookworm-slim AS runtime
+    WORKDIR /app
+    ENV NODE_ENV=production
+    
+    RUN useradd --system --no-create-home nextjs
+    # `output: "standalone"` (next.config.ts) produces a minimal server.js plus
+    # only the node_modules it actually needs — no full node_modules copy here.
+    COPY --from=build /app/public ./public
+    COPY --from=build --chown=nextjs:nextjs /app/.next/standalone ./
+    COPY --from=build --chown=nextjs:nextjs /app/.next/static ./.next/static
+    
+    USER nextjs
+    EXPOSE 3000
+    ENV PORT=3000 HOSTNAME=0.0.0.0
+    
+    CMD ["node", "server.js"]

@@ -117,6 +117,18 @@ npm install
 npm run test                       # Run all QA scenarios
 ```
 
+### Deployment (VPS via Docker Compose)
+```bash
+cp .env.compose.example .env               # Postgres creds + frontend build-time vars
+cp apps/core-service/.env.example apps/core-service/.env
+cp backend-ai/.env.example backend-ai/.env
+docker compose run --rm migrate            # apply DB schema (one-off, review first)
+docker compose up -d --build
+```
+Full walkthrough (including a container-hostname vs `localhost` gotcha for
+`DATABASE_URL`/`REDIS_URL`): [`docs/deployment-vps-docker-compose.md`](./docs/deployment-vps-docker-compose.md).
+Kubernetes is deliberately not set up yet — see that doc's closing note for why.
+
 ---
 
 ## 🏛️ Backend Architecture (Clean Architecture)
@@ -193,6 +205,14 @@ background for every completed transaction recording — see the exact call sequ
 stay byte-identical to `loggerABI` in `apps/core-service/internal/relayer/relayer.go` — see
 [Service Boundary Contracts](#-service-boundary-contracts-read-this-before-touching-an-interface) above.
 
+**Gap closing:** `logAuditOnChain` (called after every fund release) is a single fire-and-forget
+attempt — it can fail and leave `blockchain_tx_hash IS NULL` on an otherwise-`RELEASED`
+transaction. `AuditReconcilerWorker` (`internal/worker/audit_reconciler_worker.go`) closes this
+gap on a 6h cycle by always querying the chain for an existing event before ever re-logging —
+see [`docs/application-flow-and-module-guide.md`](./docs/application-flow-and-module-guide.md#closing-the-best-effort-gap-the-audit-log-reconciler)
+for the full A/B/C failure-case reasoning before touching this worker or `relayer.go`'s
+`FindLoggedTransaction`.
+
 **Target network:** Avalanche C-Chain (`avalancheFuji`, chainId 43113, for development/staging;
 Mainnet, chainId 43114, for production — only the Fuji network is configured in
 `hardhat.config.ts` today).
@@ -263,10 +283,11 @@ const Card = ({ data }: { data: any }) => {}
 - Any change to a public function or event signature must be reflected in `relayer.go`'s
   `loggerABI` in the same change — see [Service Boundary Contracts](#-service-boundary-contracts-read-this-before-touching-an-interface)
 
-### IPFS Proof Storage Rules
-- All milestone deliverables, vendor invoices, and event completion proofs MUST be uploaded to IPFS.
-- The PostgreSQL database only stores the IPFS CID (`ipfs_cid` VARCHAR).
+### IPFS Proof Storage Rules — ⚠️ policy defined, not yet implemented
+- All milestone deliverables, vendor invoices, and event completion proofs SHOULD be uploaded to IPFS.
+- The PostgreSQL database SHOULD only store the IPFS CID (`ipfs_cid` VARCHAR).
 - Frontend renders IPFS files via Gateway URL: `https://gateway.pinata.cloud/ipfs/{ipfs_cid}`.
+- **Current reality**: `ServiceMilestone` (`internal/domain/transaction.go`) has no proof/deliverable field at all. `TransactionEvents`' `InvoiceFileURL` stores the full gateway URL, not a bare CID — it does not follow this rule yet. `ReleaseMilestoneFunds()` performs no deliverable/proof check before releasing funds. Treat this section as the target design, not a description of current behavior, until these are implemented.
 
 ---
 

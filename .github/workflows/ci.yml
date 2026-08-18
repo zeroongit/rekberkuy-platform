@@ -104,3 +104,33 @@ jobs:
           else
             echo "Folder E2E belum dibuat, skip."
           fi
+
+  # Stage 5: Build-only smoke test for every Dockerfile (no push — deploy is
+  # still a manual `docker compose up -d --build` on the VPS for now).
+  # Continue-on-error until Compose deployment is actually used in practice,
+  # same "toleransi" treatment as blockchain/frontend above.
+  build_docker_images:
+    name: Build Docker Images (smoke test)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Build core-service image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./apps/core-service
+          push: false
+
+      - name: Build backend-ai image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./backend-ai
+          push: false
+
+      - name: Build dashboard-web image
+        uses: docker/build-push-action@v6
+        with:
+          context: ./apps/dashboard-web
+          push: false
