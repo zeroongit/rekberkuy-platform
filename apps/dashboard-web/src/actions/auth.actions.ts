@@ -71,3 +71,13 @@ export const registerAction = createServerAction(
   },
   { requireAuth: false, requireCsrf: true }
 );
+
+/**
+ * Server Action for User Logout.
+ * Deletes the HttpOnly JWT session cookie.
+ */
+export async function logoutAction() {
+  const cookieStore = await cookies();
+  cookieStore.delete(JWT_COOKIE_NAME);
+  return { success: true };
+}
