@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useSyncExternalStore } from 'react';
 import Link from 'next/link';
 import { useRouter, usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
@@ -15,17 +15,17 @@ import { logoutAction } from '@/actions/auth.actions';
 import { notify } from '@/components/providers/ToastProvider';
 
 export function Navbar() {
-  const [mounted, setMounted] = useState(false);
+  const mounted = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  );
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const { wallet } = useWalletStore();
   const { notifications } = useNotificationStore();
   const { user, isAuthenticated, logout } = useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   const handleLogout = async () => {
     try {
