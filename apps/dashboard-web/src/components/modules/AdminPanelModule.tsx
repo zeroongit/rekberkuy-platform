@@ -15,8 +15,24 @@ interface KycItem {
   ai_score?: number;
 }
 
+import { useRouter } from 'next/navigation';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
+import { apiService } from '@/services/api.service';
+import { notify } from '@/components/providers/ToastProvider';
+import { ShieldCheck, CheckCircle, XCircle, ArrowLeft } from 'lucide-react';
+
+interface KycItem {
+  id: string;
+  full_name: string;
+  nik: string;
+  ai_score?: number;
+}
+
 export function AdminPanelModule() {
   const [pendingKycs, setPendingKycs] = useState<KycItem[]>([]);
+  const router = useRouter();
 
   useEffect(() => {
     apiService
@@ -40,7 +56,19 @@ export function AdminPanelModule() {
   };
 
   return (
-    <Card className="p-6">
+    <div className="space-y-4">
+      <div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.back()}
+          className="text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 p-0 h-auto font-semibold flex items-center gap-1.5"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Kembali</span>
+        </Button>
+      </div>
+      <Card className="p-6">
       <CardHeader className="px-0 pt-0">
         <div className="flex items-center space-x-3">
           <div className="p-2 rounded-xl bg-purple-50 dark:bg-purple-950/50 text-purple-600 dark:text-purple-400">
@@ -87,5 +115,6 @@ export function AdminPanelModule() {
         </div>
       </CardContent>
     </Card>
+    </div>
   );
 }

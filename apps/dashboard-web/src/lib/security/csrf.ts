@@ -1,6 +1,6 @@
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
+import { CSRF_COOKIE_NAME } from '@/lib/constants/auth';
 
-const CSRF_COOKIE_NAME = '__Host-rekberkuy-csrf';
 export const CSRF_HEADER_NAME = 'x-csrf-token';
 
 /**
@@ -38,8 +38,17 @@ export async function setCsrfCookie(): Promise<string> {
 /**
  * Verifies if the incoming request CSRF token matches the cookie token.
  */
-export async function verifyCsrfToken(headerToken: string | null): Promise<boolean> {
-  if (!headerToken) return false;
+export async function verifyCsrfToken(headerToken?: string | null): Promise<boolean> {
+  let tokenToVerify = headerToken;
+  if (!tokenToVerify) {
+    try {
+      tokenToVerify = (await headers()).get(CSRF_HEADER_NAME);
+    } catch {
+      // ignore
+    }
+  }
+  if (!tokenToVerify) return false;
+
   const cookieStore = await cookies();
   const cookieToken = cookieStore.get(CSRF_COOKIE_NAME)?.value;
   
@@ -47,5 +56,5 @@ export async function verifyCsrfToken(headerToken: string | null): Promise<boole
     return false;
   }
   
-  return cookieToken === headerToken;
+  return cookieToken === tokenToVerify;
 }

@@ -16,28 +16,23 @@ export interface TopupResult {
 export const topupWalletAction = createServerAction(
   topupWalletSchema,
   async (data: TopupWalletInput, ctx) => {
-    // In production, call core-service backend API using ctx.authHeaders & ctx.token
-    // Example:
-    // const res = await fetch(`${process.env.CORE_SERVICE_URL}/api/v1/wallet/topup`, {
-    //   method: 'POST',
-    //   headers: {
-    //     'Content-Type': 'application/json',
-    //     ...ctx.authHeaders,
-    //   },
-    //   body: JSON.stringify(data),
-    // });
-    // if (!res.ok) throw new Error('Gagal memproses top-up wallet');
-    // return await res.json();
+    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
 
-    // Mock successful response for demonstration & prototyping
-    console.log('[Topup Action] Processing topup with token:', ctx.token ? 'Authenticated' : 'Unauthenticated');
-    console.log('[Topup Action] Validated & Sanitized Data:', data);
+    const res = await fetch(`${apiBase}/wallets/topup`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...ctx.authHeaders,
+      },
+      body: JSON.stringify(data),
+    });
 
-    return {
-      paymentUrl: 'https://app.sandbox.midtrans.com/snap/v2/vtweb/mock-snap-token',
-      snapToken: 'mock-snap-token-123456',
-      orderId: 'TOPUP-' + Date.now(),
-    };
+    if (!res.ok) {
+      const errBody = await res.json().catch(() => ({ error: 'Gagal memproses top-up wallet' }));
+      throw new Error(errBody.error || 'Gagal memproses top-up wallet');
+    }
+
+    return await res.json();
   },
   { requireAuth: true, requireCsrf: true }
 );

@@ -7,13 +7,23 @@ export type EscrowStatus =
 
 export type TransactionType = 'GOODS' | 'SERVICES' | 'EVENTS';
 
+export type Role = 'ADMIN' | 'USER' | 'VERIFIED_MERCHANT' | 'VERIFIED_VENDOR' | 'EVENT_ORGANIZER' | 'VENDOR';
+export type LoyaltyTier = 'BRONZE' | 'SILVER' | 'GOLD' | 'PLATINUM';
+export type KycStatus = 'UNVERIFIED' | 'PENDING' | 'VERIFIED' | 'APPROVED' | 'REJECTED';
+
 export interface UserProfile {
   id: string;
+  username: string;
   email: string;
   fullName: string;
-  role: 'USER' | 'VERIFIED_MERCHANT' | 'VERIFIED_VENDOR' | 'ADMIN';
-  isKycVerified: boolean;
+  role: Role;
+  phoneNumber?: string;
+  walletBalance?: number;
+  isKycVerified?: boolean;
+  kycStatus?: KycStatus;
+  loyaltyTier?: LoyaltyTier;
   avatarUrl?: string;
+  createdAt?: string;
 }
 
 export interface RekberPayWallet {

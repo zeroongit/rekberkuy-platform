@@ -10,6 +10,8 @@ export const registerSchema = z.object({
   password: z.string().min(8, 'Password minimal 8 karakter'),
   fullName: z.string().min(2, 'Nama lengkap minimal 2 karakter').max(100),
   phone: z.string().min(10, 'Nomor telepon minimal 10 digit').max(15).optional(),
+  accountType: z.enum(['personal', 'commercial']).default('personal'),
+  role: z.string().optional(),
 });
 
 export const kycSubmissionSchema = z.object({

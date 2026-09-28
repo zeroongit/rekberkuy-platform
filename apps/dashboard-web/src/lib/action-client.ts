@@ -23,7 +23,7 @@ export function createServerAction<TSchema extends z.ZodTypeAny, TResult>(
   return async (rawInput: z.infer<TSchema>, csrfTokenHeader?: string | null) => {
     try {
       // 1. CSRF Verification
-      if (options.requireCsrf !== false) {
+      if (options.requireCsrf !== false && process.env.NODE_ENV !== 'development') {
         const isValidCsrf = await verifyCsrfToken(csrfTokenHeader || null);
         if (!isValidCsrf) {
           return {

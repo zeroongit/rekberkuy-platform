@@ -7,12 +7,21 @@ import { Input } from '@/components/ui/Input';
 import { notify } from '@/components/providers/ToastProvider';
 import { apiService } from '@/services/api.service';
 
+import { useRouter } from 'next/navigation';
+import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
+import { Button } from '@/components/ui/Button';
+import { Input } from '@/components/ui/Input';
+import { notify } from '@/components/providers/ToastProvider';
+import { apiService } from '@/services/api.service';
+import { ArrowLeft } from 'lucide-react';
+
 export function KycVendorModule() {
   const [nik, setNik] = useState('');
   const [fullName, setFullName] = useState('');
   const [bankName, setBankName] = useState('');
   const [bankAccountNumber, setBankAccountNumber] = useState('');
   const [bankAccountHolder, setBankAccountHolder] = useState('');
+  const router = useRouter();
 
   const handleKycSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -34,7 +43,19 @@ export function KycVendorModule() {
   };
 
   return (
-    <Card className="p-6">
+    <div className="space-y-4">
+      <div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.push('/dashboard')}
+          className="text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 p-0 h-auto font-semibold flex items-center gap-1.5"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Kembali ke Dashboard</span>
+        </Button>
+      </div>
+      <Card className="p-6">
       <CardHeader className="px-0 pt-0">
         <CardTitle className="text-xl">Verifikasi Identitas (KYC)</CardTitle>
         <CardDescription className="text-xs mt-1">
@@ -103,5 +124,6 @@ export function KycVendorModule() {
         </form>
       </CardContent>
     </Card>
+    </div>
   );
 }

@@ -2,6 +2,7 @@
 
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/Tabs';
 import { Input } from '@/components/ui/Input';
@@ -17,7 +18,7 @@ import {
 } from '@/components/ui/Table';
 import { EscrowStatusBadge } from '@/components/atoms/EscrowStatusBadge';
 import { Transaction } from '@/types';
-import { Search, ExternalLink } from 'lucide-react';
+import { Search, ExternalLink, ArrowLeft } from 'lucide-react';
 
 interface TransactionListModuleProps {
   initialTransactions?: Transaction[];
@@ -67,40 +68,90 @@ export function TransactionListModule({
   initialTransactions = DEFAULT_TRANSACTIONS,
 }: TransactionListModuleProps) {
   const [searchQuery, setSearchQuery] = useState('');
+  const [statusTab, setStatusTab] = useState('ALL');
   const [categoryTab, setCategoryTab] = useState('ALL');
+  const router = useRouter();
 
   const filteredTransactions = useMemo(() => {
     return initialTransactions.filter((tx) => {
       const matchSearch =
         tx.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
         tx.id.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        tx.sellerName?.toLowerCase().includes(searchQuery.toLowerCase());
+        (tx.sellerName && tx.sellerName.toLowerCase().includes(searchQuery.toLowerCase()));
 
       const matchCategory = categoryTab === 'ALL' || tx.type === categoryTab;
 
-      return matchSearch && matchCategory;
+      let matchStatus = true;
+      if (statusTab === 'WAITING_PAYMENT') {
+        matchStatus = tx.status === 'WAITING_PAYMENT';
+      } else if (statusTab === 'FUNDS_LOCKED') {
+        matchStatus = tx.status === 'FUNDS_LOCKED';
+      } else if (statusTab === 'RELEASED') {
+        matchStatus = tx.status === 'RELEASED';
+      } else if (statusTab === 'DISPUTED') {
+        matchStatus = tx.status === 'DISPUTED' || tx.status === 'REFUNDED';
+      }
+
+      return matchSearch && matchCategory && matchStatus;
     });
-  }, [initialTransactions, searchQuery, categoryTab]);
+  }, [initialTransactions, searchQuery, categoryTab, statusTab]);
 
   return (
-    <Card className="p-6">
+    <div className="space-y-4">
+      <div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.push('/dashboard')}
+          className="text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 p-0 h-auto font-semibold flex items-center gap-1.5"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Kembali ke Dashboard</span>
+        </Button>
+      </div>
+      <Card className="p-6 border border-zinc-200 dark:border-zinc-800 shadow-xs">
       <CardHeader className="px-0 pt-0">
         <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
           <div>
-            <CardTitle className="text-xl">Daftar Transaksi Escrow</CardTitle>
+            <CardTitle className="text-xl font-bold">Pesanan & Transaksi Escrow</CardTitle>
             <CardDescription className="text-xs mt-1">
-              Pantau status penguncian dana dan riwayat transaksi aman
+              Kelola dan pantau status penguncian dana transaksi barang, jasa, dan event ala e-commerce
             </CardDescription>
           </div>
-          <Badge variant="outline" className="w-fit text-xs font-mono">
-            {filteredTransactions.length} Total Transaksi
+          <Badge variant="outline" className="w-fit text-xs font-mono font-bold bg-blue-50/50 text-blue-600 dark:bg-blue-950 dark:text-blue-400">
+            {filteredTransactions.length} Transaksi Ditemukan
           </Badge>
         </div>
       </CardHeader>
 
       <CardContent className="px-0 pb-0 space-y-4">
+        {/* Shopee-like Order Status Tabs */}
+        <div className="border-b border-zinc-200 dark:border-zinc-800 overflow-x-auto">
+          <div className="flex space-x-6 min-w-max text-xs font-semibold">
+            {[
+              { id: 'ALL', label: 'Semua Pesanan' },
+              { id: 'WAITING_PAYMENT', label: 'Belum Bayar' },
+              { id: 'FUNDS_LOCKED', label: 'Sedang Dikemas / Proses' },
+              { id: 'RELEASED', label: 'Selesai' },
+              { id: 'DISPUTED', label: 'Sengketa / Batal' },
+            ].map((tab) => (
+              <button
+                key={tab.id}
+                onClick={() => setStatusTab(tab.id)}
+                className={`pb-3 border-b-2 transition-colors whitespace-nowrap ${
+                  statusTab === tab.id
+                    ? 'border-blue-600 text-blue-600 dark:border-blue-400 dark:text-blue-400 font-bold'
+                    : 'border-transparent text-zinc-500 hover:text-zinc-800 dark:hover:text-zinc-200'
+                }`}
+              >
+                {tab.label}
+              </button>
+            ))}
+          </div>
+        </div>
+
         {/* Controls: Category Filter + Search */}
-        <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-3 pt-2">
           <Tabs
             defaultValue="ALL"
             value={categoryTab}
@@ -108,18 +159,18 @@ export function TransactionListModule({
             className="w-full sm:w-auto"
           >
             <TabsList>
-              <TabsTrigger value="ALL">Semua</TabsTrigger>
+              <TabsTrigger value="ALL">Semua Kategori</TabsTrigger>
               <TabsTrigger value="GOODS">Barang</TabsTrigger>
               <TabsTrigger value="SERVICES">Jasa</TabsTrigger>
               <TabsTrigger value="EVENTS">Event (EO)</TabsTrigger>
             </TabsList>
           </Tabs>
 
-          <div className="relative w-full sm:w-64">
+          <div className="relative w-full sm:w-72">
             <Search className="absolute left-3 top-2.5 h-4 w-4 text-zinc-400" />
             <Input
               type="text"
-              placeholder="Cari transaksi / UUID..."
+              placeholder="Cari nama barang, UUID, atau penjual..."
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="pl-9 text-xs"
@@ -195,5 +246,6 @@ export function TransactionListModule({
         </div>
       </CardContent>
     </Card>
+    </div>
   );
 }

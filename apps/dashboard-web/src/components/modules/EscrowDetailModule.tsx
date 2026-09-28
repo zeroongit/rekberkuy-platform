@@ -33,10 +33,10 @@ export function EscrowDetailModule({ transaction }: EscrowDetailModuleProps) {
     <div className="space-y-6 max-w-5xl mx-auto">
       {/* Navigation & Header */}
       <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <Link href="/">
+        <Link href="/dashboard/transactions">
           <Button variant="ghost" size="sm" className="text-xs">
             <ArrowLeft className="h-4 w-4 mr-1" />
-            Kembali ke Dashboard
+            Kembali ke Daftar Pesanan
           </Button>
         </Link>
         <div className="flex items-center space-x-2">

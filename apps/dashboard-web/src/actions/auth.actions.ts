@@ -3,8 +3,7 @@
 import { cookies } from 'next/headers';
 import { createServerAction } from '@/lib/action-client';
 import { loginSchema, registerSchema, LoginInput, RegisterInput } from '@/lib/validations/auth.schema';
-
-const JWT_COOKIE_NAME = '__Host-rekberkuy-jwt';
+import { JWT_COOKIE_NAME } from '@/lib/constants/auth';
 
 /**
  * Secure Server Action for User Login.
@@ -13,7 +12,7 @@ const JWT_COOKIE_NAME = '__Host-rekberkuy-jwt';
 export const loginAction = createServerAction(
   loginSchema,
   async (data: LoginInput) => {
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+    const apiBase = process.env.API_INTERNAL_URL || 'http://localhost:8080/api/v1';
 
     const res = await fetch(`${apiBase}/auth/login`, {
       method: 'POST',
@@ -26,26 +25,31 @@ export const loginAction = createServerAction(
       throw new Error(errBody.error || 'Email atau password salah');
     }
 
-    const result = (await res.json()) as { token: string; user: unknown };
+    const result = (await res.json()) as { token?: string; access_token?: string; user: unknown };
+    const token = result.token || result.access_token;
+
+    if (!token) {
+      throw new Error('Token tidak diterima dari server.');
+    }
     
     // Set secure HttpOnly cookie
     const cookieStore = await cookies();
     cookieStore.set({
       name: JWT_COOKIE_NAME,
-      value: result.token,
+      value: token,
       httpOnly: true,
       secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
+      sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
       path: '/',
       maxAge: 60 * 60 * 24, // 24 hours
     });
 
     return {
       user: result.user,
-      token: result.token,
+      token: token,
     };
   },
-  { requireAuth: false, requireCsrf: true }
+  { requireAuth: false, requireCsrf: false }
 );
 
 /**
@@ -54,7 +58,7 @@ export const loginAction = createServerAction(
 export const registerAction = createServerAction(
   registerSchema,
   async (data: RegisterInput) => {
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080/api/v1';
+    const apiBase = process.env.API_INTERNAL_URL || 'http://localhost:8080/api/v1';
 
     const res = await fetch(`${apiBase}/auth/register`, {
       method: 'POST',
@@ -69,7 +73,7 @@ export const registerAction = createServerAction(
 
     return await res.json();
   },
-  { requireAuth: false, requireCsrf: true }
+  { requireAuth: false, requireCsrf: false }
 );
 
 /**

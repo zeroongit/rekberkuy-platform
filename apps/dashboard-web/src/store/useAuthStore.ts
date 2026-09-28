@@ -21,6 +21,11 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'rekberkuy-auth-storage',
+      partialize: (state) => ({
+        user: state.user,
+        isAuthenticated: state.isAuthenticated,
+        // token SENGAJA tidak di-persist — auth murni via HttpOnly cookie
+      }),
     }
   )
 );

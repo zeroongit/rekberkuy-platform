@@ -2,7 +2,7 @@ import React from 'react';
 import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { Card, CardTitle, CardDescription } from '@/components/ui/Card';
-import { ShieldCheck, ShoppingBag, Briefcase, Calendar, Lock, CheckCircle2 } from 'lucide-react';
+import { ShieldCheck, ShoppingBag, Briefcase, Calendar, Lock, } from 'lucide-react';
 
 export default function LandingPage() {
   return (
@@ -22,11 +22,6 @@ export default function LandingPage() {
             <Link href="/auth">
               <Button variant="outline" size="sm" className="text-xs">
                 Masuk / Daftar
-              </Button>
-            </Link>
-            <Link href="/dashboard">
-              <Button size="sm" className="text-xs">
-                Buka Dashboard
               </Button>
             </Link>
           </div>
@@ -92,48 +87,11 @@ export default function LandingPage() {
             </CardDescription>
           </Card>
         </div>
-
-        {/* Security & Architecture Highlights */}
-        <div className="p-8 rounded-3xl bg-white dark:bg-zinc-900 border border-zinc-200 dark:border-zinc-800 shadow-sm space-y-6">
-          <h2 className="text-2xl font-black text-zinc-900 dark:text-zinc-100 text-center">
-            Standar Keamanan 7-Layer Defense-in-Depth
-          </h2>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6 text-sm">
-            <div className="flex items-start space-x-3">
-              <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold">Zod Validation</p>
-                <p className="text-xs text-zinc-500">Validasi input ganda klien & peladen.</p>
-              </div>
-            </div>
-            <div className="flex items-start space-x-3">
-              <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold">HttpOnly Secure Cookies</p>
-                <p className="text-xs text-zinc-500">Mencegah XSS cookie theft & CSRF.</p>
-              </div>
-            </div>
-            <div className="flex items-start space-x-3">
-              <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold">Redis Cache Layer</p>
-                <p className="text-xs text-zinc-500">Performa tinggi & idempotency.</p>
-              </div>
-            </div>
-            <div className="flex items-start space-x-3">
-              <CheckCircle2 className="h-5 w-5 text-emerald-500 shrink-0 mt-0.5" />
-              <div>
-                <p className="font-bold">Clean Architecture</p>
-                <p className="text-xs text-zinc-500">Domain, UseCases, Repositories terisolasi.</p>
-              </div>
-            </div>
-          </div>
-        </div>
       </main>
 
       {/* Footer */}
       <footer className="border-t border-zinc-200 dark:border-zinc-800 bg-white dark:bg-zinc-900 py-6 text-center text-xs text-zinc-500">
-        <p>© 2026 RekberKuy Platform. Built with Next.js v16, Tailwind CSS v4, and Clean Architecture.</p>
+        <p>© 2026 RekberKuy Platform..</p>
       </footer>
     </div>
   );

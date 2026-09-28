@@ -1,14 +1,15 @@
 'use client';
-
-import React, { useState } from 'react';
+import { useState } from 'react';
+import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';
 import { notify } from '@/components/providers/ToastProvider';
-import { AlertTriangle, ShieldAlert, Send } from 'lucide-react';
+import { AlertTriangle, ShieldAlert, Send, ArrowLeft } from 'lucide-react';
 
 export function DisputeModule() {
   const [reason, setReason] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const router = useRouter();
 
   const handleSubmitDispute = (e: React.FormEvent) => {
     e.preventDefault();
@@ -26,7 +27,19 @@ export function DisputeModule() {
   };
 
   return (
-    <Card className="p-6 border-red-200 dark:border-red-900/50">
+    <div className="space-y-4">
+      <div>
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={() => router.push('/dashboard')}
+          className="text-xs text-zinc-600 dark:text-zinc-400 hover:text-zinc-900 dark:hover:text-zinc-100 p-0 h-auto font-semibold flex items-center gap-1.5"
+        >
+          <ArrowLeft className="w-4 h-4" />
+          <span>Kembali ke Dashboard</span>
+        </Button>
+      </div>
+      <Card className="p-6 border-red-200 dark:border-red-900/50">
       <CardHeader className="px-0 pt-0">
         <div className="flex items-center space-x-3">
           <div className="p-2 rounded-xl bg-red-50 dark:bg-red-950/50 text-red-600 dark:text-red-400">
@@ -74,5 +87,6 @@ export function DisputeModule() {
         </form>
       </CardContent>
     </Card>
+    </div>
   );
 }

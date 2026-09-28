@@ -1,8 +1,7 @@
 import 'server-only';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { isJwtExpired } from './jwt';
-
-const JWT_COOKIE_NAME = '__Host-rekberkuy-jwt';
+import { JWT_COOKIE_NAME } from '@/lib/constants/auth';
 
 /**
  * Retrieves the JWT token from secure cookies on the server side.
@@ -10,7 +9,14 @@ const JWT_COOKIE_NAME = '__Host-rekberkuy-jwt';
 export async function getServerJwtToken(): Promise<string | null> {
   try {
     const cookieStore = await cookies();
-    const token = cookieStore.get(JWT_COOKIE_NAME)?.value;
+    let token = cookieStore.get(JWT_COOKIE_NAME)?.value;
+    if (!token) {
+      // Fallback check header Authorization
+      const authHeader = (await headers()).get('authorization');
+      if (authHeader && authHeader.startsWith('Bearer ')) {
+        token = authHeader.substring(7);
+      }
+    }
     if (!token || isJwtExpired(token)) {
       return null;
     }
