@@ -1,0 +1,70 @@
+openapi: 3.0.3
+info:
+  title: RekberKuy Core Service API
+  version: 1.0.0
+  description: Backend API for RekberKuy escrow platform (Go Clean Architecture).
+servers:
+  - url: http://localhost:8080/api/v1
+paths:
+  /auth/register:
+    post:
+      summary: Register a new user
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+                full_name:
+                  type: string
+                phone:
+                  type: string
+                role:
+                  type: string
+      responses:
+        '201':
+          description: User registered successfully
+  /auth/login:
+    post:
+      summary: Authenticate user and issue JWT cookie
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                email:
+                  type: string
+                password:
+                  type: string
+      responses:
+        '200':
+          description: Login successful, HttpOnly cookie set
+  /wallet:
+    get:
+      summary: Get current user wallet balance
+      security:
+        - CookieAuth: []
+      responses:
+        '200':
+          description: Wallet balance retrieved successfully
+  /transactions/goods:
+    post:
+      summary: Create a new goods escrow transaction
+      security:
+        - CookieAuth: []
+      responses:
+        '201':
+          description: Goods transaction created and funds locked
+components:
+  securitySchemes:
+    CookieAuth:
+      type: apiKey
+      in: cookie
+      name: token

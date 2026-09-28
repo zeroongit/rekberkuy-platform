@@ -1,5 +1,13 @@
 # CLAUDE.md — RekberKuy Platform
 
+## 📋 Sebelum Mulai
+
+1. Baca `DOCS_INDEX.md` untuk navigasi dokumentasi
+2. Identifikasi domain task yang dikerjakan
+3. Baca FR yang relevan dari `docs/requirements/`
+4. Baca business rules terkait di `docs/BRD.md` Section 8
+5. Baru tulis kode
+
 This guide helps Claude AI understand the context, architecture, and code conventions of the RekberKuy project. Read this entire file before making any changes.
 
 ---

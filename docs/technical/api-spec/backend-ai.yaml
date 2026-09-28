@@ -1,0 +1,69 @@
+openapi: 3.0.3
+info:
+  title: RekberKuy Backend AI Service API
+  version: 1.0.0
+  description: Python FastAPI service for KYC pre-screening and fraud risk scoring (scoring-only).
+servers:
+  - url: http://localhost:8081/api/v1
+paths:
+  /fraud/score:
+    post:
+      summary: Calculate transaction fraud risk score
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                transaction_id:
+                  type: string
+                amount:
+                  type: number
+                buyer_id:
+                  type: string
+                seller_id:
+                  type: string
+      responses:
+        '200':
+          description: Risk score calculated
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  score:
+                    type: number
+                  risk_level:
+                    type: string
+                    enum: [low, medium, high]
+                  reason:
+                    type: string
+  /kyc/verify:
+    post:
+      summary: Pre-screen KYC document images
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                user_id:
+                  type: string
+                ktp_image_url:
+                  type: string
+                selfie_image_url:
+                  type: string
+      responses:
+        '200':
+          description: KYC pre-screening score returned
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  confidence_score:
+                    type: number
+                  reason:
+                    type: string
