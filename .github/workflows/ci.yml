@@ -11,6 +11,20 @@ jobs:
   test_backend:
     name: Test Backend (Go)
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_USER: rekberkuy
+          POSTGRES_PASSWORD: rekberkuy
+          POSTGRES_DB: rekberkuy_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -21,10 +35,37 @@ jobs:
           go-version: '1.25' # Menggunakan versi stabil terbaru
 
       - name: Run Backend Tests
+        env:
+          TEST_DATABASE_URL: postgres://rekberkuy:rekberkuy@localhost:5432/rekberkuy_test?sslmode=disable
         run: |
           cd apps/core-service
           go mod download
           go test -v ./...
+
+  # Stage 1.5: Menguji Service Python (backend-ai)
+  test_backend_ai:
+    name: Test Backend AI (Python)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install Dependencies
+        run: |
+          cd backend-ai
+          pip install -r requirements.txt
+
+      - name: Run Lint and Tests
+        run: |
+          cd backend-ai
+          ruff check .
+          pytest --tb=short
 
   # Stage 2: Menguji Smart Contract Solidity (Diberi Toleransi)
   test_blockchain:
