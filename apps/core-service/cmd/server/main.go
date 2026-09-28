@@ -218,14 +218,19 @@ func main() {
 			servicesGroup.POST("/release-milestone", authMW.RequireRole(domain.RoleUser), servicesHandler.ReleaseMilestoneHandler)
 		}
 
-		// Event Transactions
+		// Event Transactions & Ticket Purchasing
 		eventsGroup := api.Group("/transactions/events")
 		{
-			eventsGroup.POST("/lock", authMW.RequireRole(domain.RoleUser), eventsHandler.LockFundsEventsHandler)
+			eventsGroup.POST("/lock", authMW.RequireRole(domain.RoleUser), authMW.RequirePersonalAccount(), eventsHandler.LockFundsEventsHandler)
 			eventsGroup.POST("/:id/vendor-invoices", authMW.RequireRole(domain.RoleEventOrganizer, domain.RoleAdmin), eventsHandler.SubmitVendorInvoiceHandler)
 			eventsGroup.POST("/release-milestone", authMW.RequireRole(domain.RoleAdmin), eventsHandler.ReleaseEventMilestoneHandler)
 			eventsGroup.POST("/release-vendors", authMW.RequireRole(domain.RoleEventOrganizer, domain.RoleAdmin), eventsHandler.ProcessEventVendorPayoutHandler)
 			eventsGroup.POST("/payouts/:id/disburse", authMW.RequireRole(domain.RoleAdmin), disbursementHandler.MarkDisbursedHandler)
+		}
+
+		eventsEndpointGroup := api.Group("/events")
+		{
+			eventsEndpointGroup.POST("/:id/tickets", authMW.RequireRole(domain.RoleUser), authMW.RequirePersonalAccount(), eventsHandler.BuyEventTicketHandler)
 		}
 
 		// Wallet

@@ -88,3 +88,23 @@ func (a *AuthMiddleware) RequireRole(allowedRoles ...domain.UserRole) gin.Handle
 		c.Next()
 	}
 }
+
+// RequirePersonalAccount ensures only personal accounts (USER) can access retail/consumer actions
+// such as purchasing event tickets, strictly rejecting commercial accounts (EVENT_ORGANIZER, VENDOR, SELLER, SERVICE_PROVIDER).
+func (a *AuthMiddleware) RequirePersonalAccount() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		roleVal, exists := c.Get("user_role")
+		if !exists {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Access denied: User role not found in context"})
+			c.Abort()
+			return
+		}
+		role := domain.UserRole(roleVal.(string))
+		if domain.IsCommercialRole(role) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Permission denied: Commercial accounts (Event Organizer, Vendor, Seller, Service Provider) are strictly prohibited from purchasing event tickets. Only Personal Accounts (USER) are allowed."})
+			c.Abort()
+			return
+		}
+		c.Next()
+	}
+}

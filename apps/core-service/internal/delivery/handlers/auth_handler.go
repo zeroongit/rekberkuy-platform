@@ -19,10 +19,12 @@ func NewAuthHandler(au *usecase.AuthUsecase) *AuthHandler {
 }
 
 type RegisterRequest struct {
-	Email    string `json:"email" binding:"required,email"`
-	Username string `json:"username" binding:"required,min=4"`
-	Password string `json:"password" binding:"required,min=8"`
-	FullName string `json:"full_name" binding:"required"`
+	Email       string `json:"email" binding:"required,email"`
+	Username    string `json:"username" binding:"required,min=4"`
+	Password    string `json:"password" binding:"required,min=8"`
+	FullName    string `json:"full_name" binding:"required"`
+	Role        string `json:"role"`
+	AccountType string `json:"account_type"`
 }
 
 func (h *AuthHandler) RegisterHandler(c *gin.Context) {
@@ -32,7 +34,7 @@ func (h *AuthHandler) RegisterHandler(c *gin.Context) {
 		return
 	}
 
-	user, err := h.authUsecase.Register(c.Request.Context(), req.Email, req.Username, req.Password, req.FullName)
+	user, err := h.authUsecase.Register(c.Request.Context(), req.Email, req.Username, req.Password, req.FullName, req.Role, req.AccountType)
 	if err != nil {
 		if errors.Is(err, usecase.ErrEmailAlreadyRegistered) {
 			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
@@ -71,4 +73,8 @@ func (h *AuthHandler) LoginHandler(c *gin.Context) {
 		"access_token": token,
 		"user":         user,
 	})
+}
+
+func (h *AuthHandler) getMe(c *gin.Context) {
+	
 }

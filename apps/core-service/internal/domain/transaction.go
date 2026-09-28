@@ -21,11 +21,13 @@ const (
 	TypeServices RekberType = "SERVICES"
 	TypeEvents   RekberType = "EVENTS"
 
+	StatusDraft          TransactionStatus = "DRAFT"
 	StatusWaitingPayment TransactionStatus = "WAITING_PAYMENT"
 	StatusFundsLocked    TransactionStatus = "FUNDS_LOCKED"
 	StatusDisputed       TransactionStatus = "DISPUTED"
 	StatusReleased       TransactionStatus = "RELEASED"
 	StatusRefunded       TransactionStatus = "REFUNDED"
+	StatusCancelled      TransactionStatus = "CANCELLED"
 )
 
 // Status for EventVendorPayout (event vendor invoice).

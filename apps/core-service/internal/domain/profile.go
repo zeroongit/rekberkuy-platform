@@ -13,7 +13,21 @@ const (
 	RoleVerifiedVendor   UserRole = "VERIFIED_VENDOR"
 	RoleEventOrganizer   UserRole = "EVENT_ORGANIZER"
 	RoleAdmin            UserRole = "ADMIN"
+	RoleSeller           UserRole = "SELLER"
+	RoleServiceProvider  UserRole = "SERVICE_PROVIDER"
+	RoleVendor           UserRole = "VENDOR"
 )
+
+// IsCommercialRole returns true if the role is a commercial/business account role
+// (Seller, Verified Merchant, Vendor, Verified Vendor, Event Organizer, Service Provider).
+func IsCommercialRole(role UserRole) bool {
+	switch role {
+	case RoleVerifiedMerchant, RoleVerifiedVendor, RoleEventOrganizer, RoleSeller, RoleServiceProvider, RoleVendor:
+		return true
+	default:
+		return false
+	}
+}
 
 type UserProfile struct {
 	ID           string    `gorm:"type:uuid;primaryKey;not null" json:"id"`

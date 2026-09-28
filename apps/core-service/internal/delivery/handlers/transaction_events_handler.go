@@ -176,3 +176,14 @@ func (h *TransactionEventsHandler) ReleaseEventMilestoneHandler(c *gin.Context) 
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Invoice-based event milestone funds successfully disbursed!"})
 }
+
+// BuyEventTicketHandler processes event ticket purchases by retail consumers (USER role).
+// Commercial accounts (EVENT_ORGANIZER, VENDOR, SELLER, SERVICE_PROVIDER) are strictly prohibited.
+func (h *TransactionEventsHandler) BuyEventTicketHandler(c *gin.Context) {
+	eventID := c.Param("id")
+	if eventID == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Event ID is required"})
+		return
+	}
+	h.LockFundsEventsHandler(c)
+}

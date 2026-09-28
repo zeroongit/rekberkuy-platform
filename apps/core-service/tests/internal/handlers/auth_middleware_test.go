@@ -149,3 +149,46 @@ func TestAuthMiddleware_MultipleAllowedRoles(t *testing.T) {
 		t.Errorf("EO expected 200, got %d", w.Code)
 	}
 }
+
+func TestAuthMiddleware_RequirePersonalAccount_RejectsCommercial(t *testing.T) {
+	mw := handlers.NewAuthMiddleware(testJWTSecret)
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+	r.POST("/events/:id/tickets", mw.RequireRole(domain.RoleUser), mw.RequirePersonalAccount(), func(c *gin.Context) {
+		c.JSON(http.StatusCreated, gin.H{"success": true})
+	})
+
+	commercialRoles := []domain.UserRole{
+		domain.RoleEventOrganizer,
+		domain.RoleVerifiedVendor,
+		domain.RoleVerifiedMerchant,
+		domain.RoleSeller,
+		domain.RoleServiceProvider,
+		domain.RoleVendor,
+	}
+
+	for _, role := range commercialRoles {
+		t.Run(string(role), func(t *testing.T) {
+			tok := makeToken(t, testJWTSecret, "comm-1", role)
+			req := httptest.NewRequest(http.MethodPost, "/events/evt-1/tickets", nil)
+			req.Header.Set("Authorization", "Bearer "+tok)
+			w := httptest.NewRecorder()
+			r.ServeHTTP(w, req)
+			if w.Code != http.StatusForbidden {
+				t.Errorf("expected 403 Forbidden for commercial role %s, got %d (body: %s)", role, w.Code, w.Body.String())
+			}
+		})
+	}
+
+	// Personal account (USER) should succeed
+	t.Run("USER_Allowed", func(t *testing.T) {
+		tok := makeToken(t, testJWTSecret, "user-1", domain.RoleUser)
+		req := httptest.NewRequest(http.MethodPost, "/events/evt-1/tickets", nil)
+		req.Header.Set("Authorization", "Bearer "+tok)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+		if w.Code != http.StatusCreated {
+			t.Errorf("expected 201 Created for USER role, got %d (body: %s)", w.Code, w.Body.String())
+		}
+	})
+}
