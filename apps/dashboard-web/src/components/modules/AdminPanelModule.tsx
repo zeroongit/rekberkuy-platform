@@ -1,20 +1,6 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
-import { Button } from '@/components/ui/Button';
-import { Badge } from '@/components/ui/Badge';
-import { apiService } from '@/services/api.service';
-import { notify } from '@/components/providers/ToastProvider';
-import { ShieldCheck, CheckCircle, XCircle } from 'lucide-react';
-
-interface KycItem {
-  id: string;
-  full_name: string;
-  nik: string;
-  ai_score?: number;
-}
-
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';

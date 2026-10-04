@@ -12,7 +12,7 @@ test.describe('RekberKuy E2E - PRD RBAC & Access Control Scenarios', () => {
 
     await expect(emailInput).toBeVisible({ timeout: 15000 });
     await emailInput.fill('admin@rekberkuy.id');
-    await passwordInput.fill('password_admin');
+    await passwordInput.fill('password123');
     await submitButton.click();
 
     // 2. Verify admin is redirected exclusively to /dashboard/admin control panel
@@ -42,8 +42,8 @@ test.describe('RekberKuy E2E - PRD RBAC & Access Control Scenarios', () => {
     const submitButton = page.locator('button[type="submit"]');
 
     await expect(emailInput).toBeVisible({ timeout: 15000 });
-    await emailInput.fill('buyer@rekberkuy.test');
-    await passwordInput.fill('password_buyer');
+    await emailInput.fill('buyer@rekberkuy.id');
+    await passwordInput.fill('password123');
     await submitButton.click();
 
     await page.waitForURL(/\/dashboard/, { timeout: 15000 });
@@ -69,8 +69,8 @@ test.describe('RekberKuy E2E - PRD RBAC & Access Control Scenarios', () => {
     const submitButton = page.locator('button[type="submit"]');
 
     await expect(emailInput).toBeVisible({ timeout: 15000 });
-    await emailInput.fill('eo@rekberkuy.test');
-    await passwordInput.fill('password_eo');
+    await emailInput.fill('eo@rekberkuy.id');
+    await passwordInput.fill('password123');
     await submitButton.click();
 
     await page.waitForURL(/\/dashboard/, { timeout: 15000 });

@@ -27,9 +27,9 @@ export function AuthModule() {
     defaultValues: { email: '', password: '' },
   });
 
-  const registerForm = useForm<RegisterInput>({
+  const registerForm = useForm({
     resolver: zodResolver(registerSchema),
-    defaultValues: { email: '', password: '', fullName: '', phone: '', accountType: 'personal', role: 'USER' },
+    defaultValues: { email: '', password: '', fullName: '', phone: '', accountType: 'personal' as 'personal' | 'commercial', role: 'USER' },
   });
 
   const accountType = registerForm.watch('accountType');

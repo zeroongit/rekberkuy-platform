@@ -38,7 +38,7 @@ type CreateTokenTestRequest struct {
 func (h *UserHandler) GenerateTokenTestHandler(c *gin.Context) {
 	var req CreateTokenTestRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 		return
 	}
 
@@ -60,7 +60,7 @@ func (h *UserHandler) GenerateTokenTestHandler(c *gin.Context) {
 	token := jwt.NewWithClaims(jwt.SigningMethodHS256, claims)
 	tokenString, err := token.SignedString([]byte(jwtSecret))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token: " + err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Failed to generate token: "+err.Error())
 		return
 	}
 

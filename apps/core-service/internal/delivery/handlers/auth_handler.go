@@ -30,17 +30,17 @@ type RegisterRequest struct {
 func (h *AuthHandler) RegisterHandler(c *gin.Context) {
 	var req RegisterRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid registration data: " + err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "invalid registration data: "+err.Error())
 		return
 	}
 
 	user, err := h.authUsecase.Register(c.Request.Context(), req.Email, req.Username, req.Password, req.FullName, req.Role, req.AccountType)
 	if err != nil {
 		if errors.Is(err, usecase.ErrEmailAlreadyRegistered) {
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			RespondError(c, http.StatusConflict, "CONFLICT", err.Error())
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 

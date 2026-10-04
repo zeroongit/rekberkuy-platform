@@ -42,7 +42,7 @@ func IdempotencyMiddleware(repo domain.IdempotencyRepository) gin.HandlerFunc {
 		// 3. Atomically check/lock (INSERT ... ON CONFLICT / SETNX)
 		existingRecord, isNew, err := repo.CheckOrLock(c.Request.Context(), record)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Financial protection system error: " + err.Error()})
+			RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", "Financial protection system error: "+err.Error())
 			c.Abort()
 			return
 		}
@@ -53,7 +53,7 @@ func IdempotencyMiddleware(repo domain.IdempotencyRepository) gin.HandlerFunc {
 		//    empty response (and never double-execute the handler).
 		if !isNew {
 			if existingRecord.ResponseStatus == 0 {
-				c.JSON(http.StatusConflict, gin.H{"error": "a request with this Idempotency-Key is still processing; retry shortly"})
+				RespondError(c, http.StatusConflict, "CONFLICT", "a request with this Idempotency-Key is still processing; retry shortly")
 				c.Abort()
 				return
 			}

@@ -28,13 +28,13 @@ type KYCRequestPayload struct {
 func (h *KYCHandler) SubmitKYCHandler(c *gin.Context) {
 	userID, exists := c.Get("user_id") // Protected by JWT Auth middleware
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid session or user not logged in"})
+		RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid session or user not logged in")
 		return
 	}
 
 	var req KYCRequestPayload
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid identity payload: " + err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "Invalid identity payload: "+err.Error())
 		return
 	}
 
@@ -49,7 +49,7 @@ func (h *KYCHandler) SubmitKYCHandler(c *gin.Context) {
 	)
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 
@@ -70,19 +70,19 @@ type KYCReviewPayload struct {
 func (h *KYCHandler) ReviewKYCHandler(c *gin.Context) {
 	adminID, exists := c.Get("user_id") // Protected by JWT Auth middleware (RoleAdmin)
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid session or admin not logged in"})
+		RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid session or admin not logged in")
 		return
 	}
 
 	kycID := c.Param("id")
 	if kycID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "KYC submission id is required"})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "KYC submission id is required")
 		return
 	}
 
 	var req KYCReviewPayload
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid review payload: " + err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "Invalid review payload: "+err.Error())
 		return
 	}
 
@@ -95,11 +95,11 @@ func (h *KYCHandler) ReviewKYCHandler(c *gin.Context) {
 	if err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrKYCAlreadyReviewed):
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			RespondError(c, http.StatusConflict, "CONFLICT", err.Error())
 		case errors.Is(err, usecase.ErrKYCInvalidDecision):
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		}
 		return
 	}
@@ -114,7 +114,7 @@ func (h *KYCHandler) ReviewKYCHandler(c *gin.Context) {
 func (h *KYCHandler) GetPendingKYCsHandler(c *gin.Context) {
 	pending, err := h.kycUsecase.ListPendingKYCs(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "success", "data": pending})
@@ -123,13 +123,13 @@ func (h *KYCHandler) GetPendingKYCsHandler(c *gin.Context) {
 func (h *KYCHandler) GetKYCDetailHandler(c *gin.Context) {
 	kycID := c.Param("id")
 	if kycID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "KYC submission id is required"})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "KYC submission id is required")
 		return
 	}
 
 	submission, err := h.kycUsecase.GetKYCByID(c.Request.Context(), kycID)
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusNotFound, "NOT_FOUND", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "success", "data": submission})

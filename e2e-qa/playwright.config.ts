@@ -11,7 +11,7 @@ export default defineConfig({
   workers: process.env.CI ? 1 : 2,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:3000',
+    baseURL: 'http://localhost:3003',
     headless: true,
     actionTimeout: 15000,
     navigationTimeout: 30000,
@@ -29,8 +29,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: 'npm --prefix ../apps/dashboard-web run dev',
-    url: 'http://localhost:3000',
+    command: 'PORT=3003 npm --prefix ../apps/dashboard-web run dev',
+    url: 'http://localhost:3003',
     reuseExistingServer: true,
     timeout: 120 * 1000,
   },

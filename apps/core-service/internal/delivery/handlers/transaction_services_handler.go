@@ -44,7 +44,7 @@ type LockServicesRequest struct {
 func (h *TransactionServicesHandler) LockFundsServicesHandler(c *gin.Context) {
 	var req LockServicesRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payload: " + err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "Invalid payload: "+err.Error())
 		return
 	}
 
@@ -53,7 +53,7 @@ func (h *TransactionServicesHandler) LockFundsServicesHandler(c *gin.Context) {
 	if req.Details != nil {
 		deadline, err := time.Parse(time.RFC3339, req.Details.ProjectDeadline)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "project_deadline must be an RFC3339 timestamp"})
+			RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "project_deadline must be an RFC3339 timestamp")
 			return
 		}
 		detail = &domain.TransactionServices{
@@ -71,7 +71,7 @@ func (h *TransactionServicesHandler) LockFundsServicesHandler(c *gin.Context) {
 		req.IsRekberPay, req.SellerTier, req.PaymentMethod, req.IdempotencyKey, detail, milestones,
 	)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"message": "Service escrow successfully initialized", "data": tx})
@@ -82,12 +82,12 @@ func (h *TransactionServicesHandler) ReleaseMilestoneHandler(c *gin.Context) {
 		MilestoneID string `json:"milestone_id" binding:"required,uuid4"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 		return
 	}
 
 	if err := h.servicesUsecase.ReleaseMilestoneFunds(c.Request.Context(), req.MilestoneID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Service milestone funds successfully disbursed to freelancer!"})

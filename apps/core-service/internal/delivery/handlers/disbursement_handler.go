@@ -22,11 +22,11 @@ func (h *DisbursementHandler) MarkDisbursedHandler(c *gin.Context) {
 	payoutID := c.Param("id")
 	adminID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
 		return
 	}
 	if err := h.usecase.MarkExternalPayoutDisbursed(c.Request.Context(), payoutID, adminID.(string)); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{

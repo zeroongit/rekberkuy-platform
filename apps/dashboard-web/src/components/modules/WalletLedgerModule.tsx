@@ -1,50 +1,6 @@
 'use client';
 
 import React from 'react';
-import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
-import { Badge } from '@/components/ui/Badge';
-import {
-  Table,
-  TableHeader,
-  TableBody,
-  TableRow,
-  TableHead,
-  TableCell,
-} from '@/components/ui/Table';
-import { ArrowDownRight, ArrowUpRight } from 'lucide-react';
-
-export interface LedgerEntry {
-  id: string;
-  type: 'TOPUP' | 'ESCROW_LOCK' | 'RELEASE' | 'REFUND' | 'WITHDRAWAL';
-  amount: number;
-  description: string;
-  createdAt: string;
-}
-
-const MOCK_LEDGER: LedgerEntry[] = [
-  {
-    id: 'LEDGER-101',
-    type: 'TOPUP',
-    amount: 5000000,
-    description: 'Top-up saldo RekberPay via Virtual Account BCA',
-    createdAt: '2026-08-18T09:00:00Z',
-  },
-  {
-    id: 'LEDGER-102',
-    type: 'ESCROW_LOCK',
-    amount: -18500000,
-    description: 'Penguncian dana escrow untuk transaksi #TRX-1001',
-    createdAt: '2026-08-18T10:00:00Z',
-  },
-  {
-    id: 'LEDGER-103',
-    type: 'RELEASE',
-    amount: 45000000,
-    description: 'Penerimaan rilis dana escrow dari transaksi Event EO',
-    createdAt: '2026-08-17T15:30:00Z',
-  },
-];
-
 import { useRouter } from 'next/navigation';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent } from '@/components/ui/Card';
 import { Button } from '@/components/ui/Button';

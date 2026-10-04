@@ -20,7 +20,7 @@ func NewCatalogHandler(cu *usecase.CatalogUsecase) *CatalogHandler {
 func (h *CatalogHandler) GetCategoryCatalogHandler(c *gin.Context) {
 	catalog, err := h.catalogUsecase.GetCategoryCatalog(c.Request.Context())
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "success", "data": catalog})
@@ -32,7 +32,7 @@ func (h *CatalogHandler) ListMarketplaceVendorsHandler(c *gin.Context) {
 	limit, offset := pagination(c)
 	vendors, err := h.catalogUsecase.ListMarketplaceVendors(c.Request.Context(), c.Query("category"), limit, offset)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "success", "data": vendors})

@@ -9,8 +9,8 @@ test.describe('RekberKuy E2E - Wallet, Dispute Mediation, and Blockchain Audit L
     const submitButton = page.locator('button[type="submit"]');
 
     await expect(emailInput).toBeVisible({ timeout: 15000 });
-    await emailInput.fill('buyer@rekberkuy.test');
-    await passwordInput.fill('password_buyer');
+    await emailInput.fill('buyer@rekberkuy.id');
+    await passwordInput.fill('password123');
     await submitButton.click();
     await page.waitForURL(/\/dashboard/, { timeout: 15000 });
 
@@ -32,8 +32,8 @@ test.describe('RekberKuy E2E - Wallet, Dispute Mediation, and Blockchain Audit L
     const submitButton = page.locator('button[type="submit"]');
 
     await expect(emailInput).toBeVisible({ timeout: 15000 });
-    await emailInput.fill('buyer@rekberkuy.test');
-    await passwordInput.fill('password_buyer');
+    await emailInput.fill('buyer@rekberkuy.id');
+    await passwordInput.fill('password123');
     await submitButton.click();
     await page.waitForURL(/\/dashboard/, { timeout: 15000 });
 
@@ -56,7 +56,7 @@ test.describe('RekberKuy E2E - Wallet, Dispute Mediation, and Blockchain Audit L
 
     await expect(emailInput).toBeVisible({ timeout: 15000 });
     await emailInput.fill('admin@rekberkuy.id');
-    await passwordInput.fill('password_admin');
+    await passwordInput.fill('password123');
     await submitButton.click();
     await page.waitForURL(/\/dashboard\/admin/, { timeout: 15000 });
 

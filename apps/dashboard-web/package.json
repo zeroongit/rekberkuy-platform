@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "jest"
+    "test": "jest --config test/jest.config.js"
   },
   "dependencies": {
     "@hookform/resolvers": "^5.9.1",

@@ -22,7 +22,16 @@ export const loginAction = createServerAction(
 
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({ error: 'Login gagal' }));
-      throw new Error(errBody.error || 'Email atau password salah');
+      let errorMessage = 'Email atau password salah';
+      if (typeof errBody.error === 'string') {
+        errorMessage = errBody.error;
+      } else if (errBody.error && typeof errBody.error === 'object') {
+        const errObj = errBody.error as { message?: string; code?: string };
+        errorMessage = errObj.message || JSON.stringify(errObj);
+      } else if (typeof errBody === 'string') {
+        errorMessage = errBody;
+      }
+      throw new Error(errorMessage);
     }
 
     const result = (await res.json()) as { token?: string; access_token?: string; user: unknown };
@@ -68,7 +77,16 @@ export const registerAction = createServerAction(
 
     if (!res.ok) {
       const errBody = await res.json().catch(() => ({ error: 'Registrasi gagal' }));
-      throw new Error(errBody.error || 'Gagal mendaftarkan akun');
+      let errorMessage = 'Gagal mendaftarkan akun';
+      if (typeof errBody.error === 'string') {
+        errorMessage = errBody.error;
+      } else if (errBody.error && typeof errBody.error === 'object') {
+        const errObj = errBody.error as { message?: string; code?: string };
+        errorMessage = errObj.message || JSON.stringify(errObj);
+      } else if (typeof errBody === 'string') {
+        errorMessage = errBody;
+      }
+      throw new Error(errorMessage);
     }
 
     return await res.json();

@@ -41,6 +41,10 @@ type UserProfile struct {
 	UpdatedAt    time.Time `gorm:"default:now()" json:"updated_at"`
 }
 
+func (UserProfile) TableName() string {
+	return "user_profiles"
+}
+
 type CRMLoyalty struct {
 	UserID                  string      `gorm:"type:uuid;primaryKey;not null" json:"user_id"`
 	UserProfile             UserProfile `gorm:"foreignKey:UserID;constraint:OnDelete:CASCADE"`
@@ -56,6 +60,10 @@ type CRMLoyalty struct {
 	TierEvaluationStartedAt time.Time   `gorm:"default:now()" json:"tier_evaluation_started_at"`
 	LastMonthEvaluatedAt    time.Time   `gorm:"default:now()" json:"last_month_evaluated_at"`
 	UpdatedAt               time.Time   `gorm:"default:now()" json:"updated_at"`
+}
+
+func (CRMLoyalty) TableName() string {
+	return "crm_loyalty"
 }
 
 type KYCStatus string
@@ -88,6 +96,10 @@ type KYCSubmission struct {
 	UpdatedAt   time.Time    `gorm:"default:now()" json:"updated_at"`
 }
 
+func (KYCSubmission) TableName() string {
+	return "kyc_submissions"
+}
+
 type EOProfile = VendorProfile
 
 type VendorProfile struct {
@@ -97,6 +109,10 @@ type VendorProfile struct {
 	Category     string      `gorm:"type:varchar(100);not null" json:"category"`
 	IsVerified   bool        `gorm:"type:boolean;default:false" json:"is_verified"`
 	CreatedAt    time.Time   `gorm:"default:now()" json:"created_at"`
+}
+
+func (VendorProfile) TableName() string {
+	return "vendor_profiles"
 }
 
 type UserRepository interface {

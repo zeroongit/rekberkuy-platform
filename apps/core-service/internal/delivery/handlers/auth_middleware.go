@@ -29,7 +29,7 @@ func (a *AuthMiddleware) RequireRole(allowedRoles ...domain.UserRole) gin.Handle
 		// 1. Get the Authorization header
 		authHeader := c.GetHeader("Authorization")
 		if authHeader == "" {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Access denied: Authorization header not found"})
+			RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Access denied: Authorization header not found")
 			c.Abort()
 			return
 		}
@@ -37,7 +37,7 @@ func (a *AuthMiddleware) RequireRole(allowedRoles ...domain.UserRole) gin.Handle
 		// 2. Extract the token from the "Bearer <token>" format
 		tokenString := strings.TrimPrefix(authHeader, "Bearer ")
 		if tokenString == authHeader {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Access denied: Token format must be 'Bearer <token>'"})
+			RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Access denied: Token format must be 'Bearer <token>'")
 			c.Abort()
 			return
 		}
@@ -53,14 +53,14 @@ func (a *AuthMiddleware) RequireRole(allowedRoles ...domain.UserRole) gin.Handle
 
 		// If the token is broken, tampered with, or expired, reject it immediately
 		if err != nil || !token.Valid {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Access denied: Token invalid or expired"})
+			RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Access denied: Token invalid or expired")
 			c.Abort()
 			return
 		}
 
 		claims, ok := token.Claims.(*domain.JWTCustomClaims)
 		if !ok {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Access denied: Failed to read claims payload"})
+			RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Access denied: Failed to read claims payload")
 			c.Abort()
 			return
 		}
@@ -75,7 +75,7 @@ func (a *AuthMiddleware) RequireRole(allowedRoles ...domain.UserRole) gin.Handle
 		}
 
 		if !isAllowed {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Permission denied: You are not authorized to execute this financial action!"})
+			RespondError(c, http.StatusForbidden, "FORBIDDEN", "Permission denied: You are not authorized to execute this financial action!")
 			c.Abort()
 			return
 		}
@@ -95,13 +95,13 @@ func (a *AuthMiddleware) RequirePersonalAccount() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		roleVal, exists := c.Get("user_role")
 		if !exists {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Access denied: User role not found in context"})
+			RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Access denied: User role not found in context")
 			c.Abort()
 			return
 		}
 		role := domain.UserRole(roleVal.(string))
 		if domain.IsCommercialRole(role) {
-			c.JSON(http.StatusForbidden, gin.H{"error": "Permission denied: Commercial accounts (Event Organizer, Vendor, Seller, Service Provider) are strictly prohibited from purchasing event tickets. Only Personal Accounts (USER) are allowed."})
+			RespondError(c, http.StatusForbidden, "FORBIDDEN", "Permission denied: Commercial accounts (Event Organizer, Vendor, Seller, Service Provider) are strictly prohibited from purchasing event tickets. Only Personal Accounts (USER) are allowed.")
 			c.Abort()
 			return
 		}

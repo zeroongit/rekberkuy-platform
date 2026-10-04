@@ -46,7 +46,7 @@ type LockEventsRequest struct {
 func (h *TransactionEventsHandler) LockFundsEventsHandler(c *gin.Context) {
 	var req LockEventsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payload: " + err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "Invalid payload: "+err.Error())
 		return
 	}
 
@@ -55,12 +55,12 @@ func (h *TransactionEventsHandler) LockFundsEventsHandler(c *gin.Context) {
 	if req.Details != nil {
 		startTime, err := time.Parse(time.RFC3339, req.Details.EventStartTime)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "event_start_time must be an RFC3339 timestamp"})
+			RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "event_start_time must be an RFC3339 timestamp")
 			return
 		}
 		endTime, err := time.Parse(time.RFC3339, req.Details.EventEndTime)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "event_end_time must be an RFC3339 timestamp"})
+			RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "event_end_time must be an RFC3339 timestamp")
 			return
 		}
 		detail = &domain.TransactionEvents{
@@ -84,7 +84,7 @@ func (h *TransactionEventsHandler) LockFundsEventsHandler(c *gin.Context) {
 		req.IsRekberPay, req.SellerTier, req.PaymentMethod, req.IdempotencyKey, detail, allocations,
 	)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"message": "Event escrow successfully initialized", "data": tx})
@@ -107,19 +107,19 @@ type SubmitVendorInvoicePayload struct {
 func (h *TransactionEventsHandler) SubmitVendorInvoiceHandler(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid session or user not logged in"})
+		RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid session or user not logged in")
 		return
 	}
 
 	transactionID := c.Param("id")
 	if transactionID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Event transaction id is required"})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "Event transaction id is required")
 		return
 	}
 
 	var req SubmitVendorInvoicePayload
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid invoice payload: " + err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "Invalid invoice payload: "+err.Error())
 		return
 	}
 
@@ -136,7 +136,7 @@ func (h *TransactionEventsHandler) SubmitVendorInvoiceHandler(c *gin.Context) {
 	}
 
 	if err := h.eventsUsecase.SubmitEventVendorInvoice(c.Request.Context(), userID.(string), payout); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{
@@ -150,12 +150,12 @@ func (h *TransactionEventsHandler) ProcessEventVendorPayoutHandler(c *gin.Contex
 		TransactionID string `json:"transaction_id" binding:"required,uuid4"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 		return
 	}
 
 	if err := h.eventsUsecase.ProcessEventVendorPayouts(c.Request.Context(), req.TransactionID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Event escrow funds successfully split to all field vendors!"})
@@ -166,12 +166,12 @@ func (h *TransactionEventsHandler) ReleaseEventMilestoneHandler(c *gin.Context) 
 		PayoutID string `json:"payout_id" binding:"required,uuid4"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 		return
 	}
 
 	if err := h.eventsUsecase.ReleaseEventMilestonePayout(c.Request.Context(), req.PayoutID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Invoice-based event milestone funds successfully disbursed!"})
@@ -182,7 +182,7 @@ func (h *TransactionEventsHandler) ReleaseEventMilestoneHandler(c *gin.Context) 
 func (h *TransactionEventsHandler) BuyEventTicketHandler(c *gin.Context) {
 	eventID := c.Param("id")
 	if eventID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Event ID is required"})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "Event ID is required")
 		return
 	}
 	h.LockFundsEventsHandler(c)
