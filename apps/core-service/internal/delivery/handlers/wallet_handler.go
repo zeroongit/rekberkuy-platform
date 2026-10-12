@@ -26,19 +26,19 @@ type TopUpRequest struct {
 func (h *WalletHandler) CreateTopUpHandler(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired session"})
+		RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired session")
 		return
 	}
 
 	var req TopUpRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid top-up amount: " + err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "Invalid top-up amount: "+err.Error())
 		return
 	}
 
 	txLog, snap, err := h.userUsecase.TopUpWallet(c.Request.Context(), userID.(string), req.Amount)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 
@@ -54,12 +54,12 @@ func (h *WalletHandler) CreateTopUpHandler(c *gin.Context) {
 func (h *WalletHandler) GetBalanceHandler(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired session"})
+		RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired session")
 		return
 	}
 	wallet, err := h.userUsecase.GetWalletBalance(c.Request.Context(), userID.(string))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "success", "data": wallet})
@@ -69,13 +69,13 @@ func (h *WalletHandler) GetBalanceHandler(c *gin.Context) {
 func (h *WalletHandler) GetHistoryHandler(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired session"})
+		RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired session")
 		return
 	}
 	limit, offset := pagination(c)
 	history, err := h.userUsecase.GetWalletHistory(c.Request.Context(), userID.(string), limit, offset)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "success", "data": history})
@@ -93,13 +93,13 @@ type WithdrawRequest struct {
 func (h *WalletHandler) RequestWithdrawalHandler(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired session"})
+		RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired session")
 		return
 	}
 
 	var req WithdrawRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid withdrawal payload: " + err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "Invalid withdrawal payload: "+err.Error())
 		return
 	}
 
@@ -110,10 +110,10 @@ func (h *WalletHandler) RequestWithdrawalHandler(c *gin.Context) {
 		// Validation problems are the caller's fault (400); anything else
 		// (wallet debit refused by the DB, UoW failure) is a server error.
 		if errors.Is(err, usecase.ErrInvalidWithdrawalReqt) {
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 			return
 		}
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"status": "success", "message": "Withdrawal request recorded", "data": request})
@@ -123,13 +123,13 @@ func (h *WalletHandler) RequestWithdrawalHandler(c *gin.Context) {
 func (h *WalletHandler) ListMyWithdrawalsHandler(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired session"})
+		RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired session")
 		return
 	}
 	limit, offset := pagination(c)
 	withdrawals, err := h.withdrawalUsecase.ListMyWithdrawals(c.Request.Context(), userID.(string), limit, offset)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "success", "data": withdrawals})
@@ -140,7 +140,7 @@ func (h *WalletHandler) ListPendingWithdrawalsHandler(c *gin.Context) {
 	limit, offset := pagination(c)
 	withdrawals, err := h.withdrawalUsecase.ListPendingWithdrawals(c.Request.Context(), limit, offset)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "success", "data": withdrawals})
@@ -152,13 +152,13 @@ func (h *WalletHandler) ListPendingWithdrawalsHandler(c *gin.Context) {
 func (h *WalletHandler) MarkWithdrawalDisbursedHandler(c *gin.Context) {
 	adminID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid or expired session"})
+		RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid or expired session")
 		return
 	}
 
 	withdrawalID := c.Param("id")
 	if withdrawalID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Withdrawal id is required"})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "Withdrawal id is required")
 		return
 	}
 
@@ -166,18 +166,18 @@ func (h *WalletHandler) MarkWithdrawalDisbursedHandler(c *gin.Context) {
 		MidtransFee *int64 `json:"midtrans_fee" binding:"omitempty,gte=0"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid disbursement payload: " + err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "Invalid disbursement payload: "+err.Error())
 		return
 	}
 
 	if err := h.withdrawalUsecase.MarkWithdrawalDisbursed(c.Request.Context(), withdrawalID, adminID.(string), req.MidtransFee); err != nil {
 		switch {
 		case errors.Is(err, usecase.ErrWithdrawalAlreadyPaid):
-			c.JSON(http.StatusConflict, gin.H{"error": err.Error()})
+			RespondError(c, http.StatusConflict, "CONFLICT", err.Error())
 		case errors.Is(err, usecase.ErrInvalidWithdrawalReqt):
-			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 		default:
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		}
 		return
 	}

@@ -24,13 +24,13 @@ func (h *VendorHandler) RegisterVendorHandler(c *gin.Context) {
 	// Get the legitimate User UUID from the JWT Auth middleware token injector
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Session not found, please log in again"})
+		RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Session not found, please log in again")
 		return
 	}
 
 	var req RegisterVendorPayload
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payload: " + err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "Invalid payload: "+err.Error())
 		return
 	}
 
@@ -43,7 +43,7 @@ func (h *VendorHandler) RegisterVendorHandler(c *gin.Context) {
 	}
 
 	if err := h.vendorUsecase.RegisterVendorProfile(c.Request.Context(), vendor); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 

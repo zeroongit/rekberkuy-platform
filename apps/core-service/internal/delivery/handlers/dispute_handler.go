@@ -26,17 +26,17 @@ type OpenDisputeRequest struct {
 func (h *DisputeHandler) OpenDisputeHandler(c *gin.Context) {
 	var req OpenDisputeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid dispute data: " + err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "invalid dispute data: "+err.Error())
 		return
 	}
 	raisedBy, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
 		return
 	}
 	dispute, err := h.usecase.OpenDispute(c.Request.Context(), req.TransactionID, raisedBy.(string), req.Reason, req.EvidenceURL)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"dispute": dispute})
@@ -44,7 +44,7 @@ func (h *DisputeHandler) OpenDisputeHandler(c *gin.Context) {
 
 func (h *DisputeHandler) AcknowledgeDisputeHandler(c *gin.Context) {
 	if err := h.usecase.AcknowledgeDispute(c.Request.Context(), c.Param("id")); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "dispute acknowledged", "status": domain.DisputeStatusUnderReview})
@@ -58,16 +58,16 @@ type ResolveDisputeRequest struct {
 func (h *DisputeHandler) ResolveDisputeHandler(c *gin.Context) {
 	var req ResolveDisputeRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid resolution data: " + err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "invalid resolution data: "+err.Error())
 		return
 	}
 	adminID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "authentication required"})
+		RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "authentication required")
 		return
 	}
 	if err := h.usecase.ResolveDispute(c.Request.Context(), c.Param("id"), adminID.(string), req.Outcome, req.Summary); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "dispute resolved", "outcome": req.Outcome})
@@ -76,7 +76,7 @@ func (h *DisputeHandler) ResolveDisputeHandler(c *gin.Context) {
 func (h *DisputeHandler) GetDisputeHandler(c *gin.Context) {
 	dispute, err := h.usecase.GetDispute(c.Request.Context(), c.Param("id"))
 	if err != nil {
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusNotFound, "NOT_FOUND", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"dispute": dispute})

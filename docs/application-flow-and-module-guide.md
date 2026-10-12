@@ -23,12 +23,21 @@ This document is the **technical reference** for the RekberKuy platform: the act
 All three business lines (Goods, Services, Events) share one rigid state machine enforced at the database level (`domain.TransactionStatus`):
 
 ```
-WAITING_PAYMENT ──(payment confirmed)──► FUNDS_LOCKED ──(confirm receipt / milestone done / auto-release timeout)──► RELEASED  (success)
-                                              │
-                                     (dispute / complaint)
-                                              ▼
-                                             DISPUTED ──(admin resolution)──► REFUNDED  (funds returned)
+DRAFT ──(publish)──► WAITING_PAYMENT ──(payment confirmed)──► FUNDS_LOCKED ──(confirm receipt / milestone done / auto-release timeout)──► RELEASED  (success)
+                            │                                     │
+                     (cancel / timeout)                     (dispute / complaint)
+                            ▼                                     ▼
+                        CANCELLED                              DISPUTED ──(admin resolution)──► REFUNDED  (funds returned)
  ```
+ 
+Status definitions (`domain.TransactionStatus`):
+- `DRAFT`: Initial status when a transaction is created as a draft before being published or generating an invoice.
+- `WAITING_PAYMENT`: Transaction officially created, waiting for payment confirmation from the buyer.
+- `CANCELLED`: Transaction cancelled before payment confirmation.
+- `FUNDS_LOCKED`: Buyer funds are held securely in escrow.
+- `RELEASED`: Funds released to the counterparty (terminal success).
+- `DISPUTED`: A complaint froze the funds pending mediation.
+- `REFUNDED`: Funds returned to the buyer (terminal complaint resolution).
  ---
  
 ## AI-Assisted Admin Verification — Current Status

@@ -13,7 +13,21 @@ const (
 	RoleVerifiedVendor   UserRole = "VERIFIED_VENDOR"
 	RoleEventOrganizer   UserRole = "EVENT_ORGANIZER"
 	RoleAdmin            UserRole = "ADMIN"
+	RoleSeller           UserRole = "SELLER"
+	RoleServiceProvider  UserRole = "SERVICE_PROVIDER"
+	RoleVendor           UserRole = "VENDOR"
 )
+
+// IsCommercialRole returns true if the role is a commercial/business account role
+// (Seller, Verified Merchant, Vendor, Verified Vendor, Event Organizer, Service Provider).
+func IsCommercialRole(role UserRole) bool {
+	switch role {
+	case RoleVerifiedMerchant, RoleVerifiedVendor, RoleEventOrganizer, RoleSeller, RoleServiceProvider, RoleVendor:
+		return true
+	default:
+		return false
+	}
+}
 
 type UserProfile struct {
 	ID           string    `gorm:"type:uuid;primaryKey;not null" json:"id"`
@@ -25,6 +39,10 @@ type UserProfile struct {
 	PhoneNumber  *string   `gorm:"type:varchar(50)" json:"phone_number,omitempty"`
 	CreatedAt    time.Time `gorm:"default:now()" json:"created_at"`
 	UpdatedAt    time.Time `gorm:"default:now()" json:"updated_at"`
+}
+
+func (UserProfile) TableName() string {
+	return "user_profiles"
 }
 
 type CRMLoyalty struct {
@@ -42,6 +60,10 @@ type CRMLoyalty struct {
 	TierEvaluationStartedAt time.Time   `gorm:"default:now()" json:"tier_evaluation_started_at"`
 	LastMonthEvaluatedAt    time.Time   `gorm:"default:now()" json:"last_month_evaluated_at"`
 	UpdatedAt               time.Time   `gorm:"default:now()" json:"updated_at"`
+}
+
+func (CRMLoyalty) TableName() string {
+	return "crm_loyalty"
 }
 
 type KYCStatus string
@@ -74,6 +96,10 @@ type KYCSubmission struct {
 	UpdatedAt   time.Time    `gorm:"default:now()" json:"updated_at"`
 }
 
+func (KYCSubmission) TableName() string {
+	return "kyc_submissions"
+}
+
 type EOProfile = VendorProfile
 
 type VendorProfile struct {
@@ -83,6 +109,10 @@ type VendorProfile struct {
 	Category     string      `gorm:"type:varchar(100);not null" json:"category"`
 	IsVerified   bool        `gorm:"type:boolean;default:false" json:"is_verified"`
 	CreatedAt    time.Time   `gorm:"default:now()" json:"created_at"`
+}
+
+func (VendorProfile) TableName() string {
+	return "vendor_profiles"
 }
 
 type UserRepository interface {

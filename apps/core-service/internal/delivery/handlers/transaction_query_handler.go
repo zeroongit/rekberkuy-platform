@@ -21,14 +21,14 @@ func NewTransactionQueryHandler(qu *usecase.TransactionQueryUsecase) *Transactio
 func (h *TransactionQueryHandler) ListMyTransactionsHandler(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid session or user not logged in"})
+		RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid session or user not logged in")
 		return
 	}
 
 	limit, offset := pagination(c)
 	txs, err := h.queryUsecase.ListUserTransactions(c.Request.Context(), userID.(string), limit, offset)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "success", "data": txs})
@@ -37,23 +37,23 @@ func (h *TransactionQueryHandler) ListMyTransactionsHandler(c *gin.Context) {
 func (h *TransactionQueryHandler) GetTransactionDetailHandler(c *gin.Context) {
 	userID, exists := c.Get("user_id")
 	if !exists {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid session or user not logged in"})
+		RespondError(c, http.StatusUnauthorized, "UNAUTHORIZED", "Invalid session or user not logged in")
 		return
 	}
 
 	txID := c.Param("id")
 	if txID == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Transaction id is required"})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "Transaction id is required")
 		return
 	}
 
 	detail, err := h.queryUsecase.GetTransactionDetail(c.Request.Context(), userID.(string), txID)
 	if err != nil {
 		if errors.Is(err, usecase.ErrNotTransactionParty) {
-			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
+			RespondError(c, http.StatusForbidden, "FORBIDDEN", err.Error())
 			return
 		}
-		c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusNotFound, "NOT_FOUND", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "success", "data": detail})

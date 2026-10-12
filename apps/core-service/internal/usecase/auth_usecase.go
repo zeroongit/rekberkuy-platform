@@ -67,7 +67,7 @@ func NewAuthUsecase(uow domain.UnitOfWork, ur domain.UserRepository, token *Toke
 // Register validates the input, enforces email uniqueness, hashes the password
 // (bcrypt), and atomically creates the profile + zero-balance RekberPay wallet.
 // Returns the created profile (PasswordHash is never JSON-serialized).
-func (a *AuthUsecase) Register(ctx context.Context, email, username, password, fullName string) (*domain.UserProfile, error) {
+func (a *AuthUsecase) Register(ctx context.Context, email, username, password, fullName string, optionalParams ...string) (*domain.UserProfile, error) {
 	if email == "" || username == "" || password == "" || fullName == "" {
 		return nil, errors.New("email, username, password, and full name are required")
 	}
@@ -85,13 +85,32 @@ func (a *AuthUsecase) Register(ctx context.Context, email, username, password, f
 		return nil, fmt.Errorf("failed to hash password: %w", err)
 	}
 
+	role := domain.RoleUser
+	var roleStr, accountType string
+	if len(optionalParams) > 0 {
+		roleStr = optionalParams[0]
+	}
+	if len(optionalParams) > 1 {
+		accountType = optionalParams[1]
+	}
+
+	if roleStr != "" {
+		r := domain.UserRole(roleStr)
+		switch r {
+		case domain.RoleUser, domain.RoleVerifiedMerchant, domain.RoleVerifiedVendor, domain.RoleEventOrganizer, domain.RoleSeller, domain.RoleServiceProvider, domain.RoleVendor:
+			role = r
+		}
+	} else if accountType == "commercial" {
+		role = domain.RoleEventOrganizer
+	}
+
 	user := &domain.UserProfile{
 		ID:           uuid.New().String(),
 		Email:        email,
 		Username:     username,
 		PasswordHash: string(hash),
 		FullName:     fullName,
-		Role:         domain.RoleUser,
+		Role:         role,
 	}
 
 	if err := initProfileAndWallet(ctx, a.uow, user); err != nil {

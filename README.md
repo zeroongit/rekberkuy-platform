@@ -21,7 +21,7 @@ RekberKuy is a comprehensive modern escrow platform designed to secure transacti
 ### Services & Milestone Payment
 - Proposal and project posting for clients and freelancers
 - Milestone-based payment release structure (phased disbursements)
-- Project deadline monitoring and deliverable verification
+- Project deadline field captured per transaction (active auto-timeout monitoring currently covers Goods only — see [`docs/application-flow-and-module-guide.md`](docs/application-flow-and-module-guide.md))
 - Escrow protection for both service providers and clients
 - Performance review and rating integration
 
@@ -71,7 +71,8 @@ Built with:
 - **Blockchain**: Avalanche Network, Hardhat v3, Solidity
 - **AI & ML**: Groq AI API, FastAPI
 - **Payment Gateway**: Midtrans Sandbox/Production
-- **CI/CD & DevOps**: Docker, GitHub Actions
+- **CI/CD**: GitHub Actions
+- **Deployment**: Docker, Docker Compose (VPS self-hosted — see [`docs/deployment-vps-docker-compose.md`](docs/deployment-vps-docker-compose.md))
 
 ## Getting Started
 

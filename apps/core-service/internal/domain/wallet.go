@@ -31,6 +31,10 @@ type RekberPayWallet struct {
 	UpdatedAt   time.Time   `gorm:"default:now()" json:"updated_at"`
 }
 
+func (RekberPayWallet) TableName() string {
+	return "rekberpay_wallets"
+}
+
 type RekberPayTransaction struct {
 	ID                     string          `gorm:"type:uuid;primaryKey;default:gen_random_uuid()" json:"id"`
 	WalletID               string          `gorm:"type:uuid;not null;index" json:"wallet_id"`
@@ -44,6 +48,10 @@ type RekberPayTransaction struct {
 	MidtransTopUpID        *string         `gorm:"type:varchar(255)" json:"midtrans_topup_id,omitempty"`
 	Description            *string         `gorm:"type:text" json:"description,omitempty"`
 	CreatedAt              time.Time       `gorm:"default:now()" json:"created_at"`
+}
+
+func (RekberPayTransaction) TableName() string {
+	return "rekberpay_transactions"
 }
 
 type IdempotencyRecord struct {

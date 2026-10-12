@@ -404,3 +404,29 @@ func (u *TransactionEventsUsecase) ReleaseEventMilestonePayout(ctx context.Conte
 	}
 	return nil
 }
+
+func (u *TransactionEventsUsecase) PublishTransaction(ctx context.Context, transactionID string) error {
+	return u.uow.Do(ctx, func(ctx context.Context, stores domain.TxStores) error {
+		tx, err := stores.Transactions.GetTransactionByID(ctx, transactionID)
+		if err != nil {
+			return err
+		}
+		if tx.Status != domain.StatusDraft {
+			return fmt.Errorf("transaction status must be DRAFT to be published, current status %s", tx.Status)
+		}
+		return stores.Transactions.UpdateTransactionStatus(ctx, transactionID, domain.StatusWaitingPayment)
+	})
+}
+
+func (u *TransactionEventsUsecase) CancelTransaction(ctx context.Context, transactionID string) error {
+	return u.uow.Do(ctx, func(ctx context.Context, stores domain.TxStores) error {
+		tx, err := stores.Transactions.GetTransactionByID(ctx, transactionID)
+		if err != nil {
+			return err
+		}
+		if tx.Status != domain.StatusDraft && tx.Status != domain.StatusWaitingPayment {
+			return fmt.Errorf("transaction cannot be cancelled from status %s", tx.Status)
+		}
+		return stores.Transactions.UpdateTransactionStatus(ctx, transactionID, domain.StatusCancelled)
+	})
+}

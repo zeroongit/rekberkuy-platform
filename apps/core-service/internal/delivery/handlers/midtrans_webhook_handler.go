@@ -37,19 +37,19 @@ func isSuccessStatus(transactionStatus, fraudStatus string) bool {
 // NotificationHandler is the webhook endpoint called by Midtrans.
 func (h *MidtransWebhookHandler) NotificationHandler(c *gin.Context) {
 	if h.midtrans == nil {
-		c.JSON(http.StatusServiceUnavailable, gin.H{"error": "payment gateway not configured"})
+		RespondError(c, http.StatusServiceUnavailable, "INTERNAL_ERROR", "payment gateway not configured")
 		return
 	}
 
 	var notif domain.MidtransNotification
 	if err := c.ShouldBindJSON(&notif); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid notification payload: " + err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "invalid notification payload: "+err.Error())
 		return
 	}
 
 	// 1. SignatureKey verification is mandatory (anti webhook forgery).
 	if !h.midtrans.VerifySignature(notif.OrderID, notif.StatusCode, notif.GrossAmount, notif.SignatureKey) {
-		c.JSON(http.StatusForbidden, gin.H{"error": "invalid signature"})
+		RespondError(c, http.StatusForbidden, "FORBIDDEN", "invalid signature")
 		return
 	}
 
@@ -64,7 +64,7 @@ func (h *MidtransWebhookHandler) NotificationHandler(c *gin.Context) {
 			return
 		}
 		if err := h.userUsecase.ConfirmTopUp(c.Request.Context(), notif.OrderID, notif.TransactionID); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "top-up confirmed"})
@@ -75,7 +75,7 @@ func (h *MidtransWebhookHandler) NotificationHandler(c *gin.Context) {
 			return
 		}
 		if err := h.goodsUsecase.ConfirmPaymentGoods(c.Request.Context(), notif.OrderID); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "goods payment confirmed"})
@@ -86,7 +86,7 @@ func (h *MidtransWebhookHandler) NotificationHandler(c *gin.Context) {
 			return
 		}
 		if err := h.servicesUsecase.ConfirmPaymentServices(c.Request.Context(), notif.OrderID); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "services payment confirmed"})
@@ -97,7 +97,7 @@ func (h *MidtransWebhookHandler) NotificationHandler(c *gin.Context) {
 			return
 		}
 		if err := h.eventsUsecase.ConfirmPaymentEvents(c.Request.Context(), notif.OrderID); err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "event payment confirmed"})

@@ -40,7 +40,7 @@ type LockGoodsRequest struct {
 func (h *TransactionGoodsHandler) LockFundsGoodsHandler(c *gin.Context) {
 	var req LockGoodsRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid payload: " + err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "Invalid payload: "+err.Error())
 		return
 	}
 
@@ -48,7 +48,7 @@ func (h *TransactionGoodsHandler) LockFundsGoodsHandler(c *gin.Context) {
 	if req.Details != nil {
 		deadline, err := time.Parse(time.RFC3339, req.Details.AutoConfirmDeadline)
 		if err != nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "auto_confirm_deadline must be an RFC3339 timestamp"})
+			RespondError(c, http.StatusBadRequest, "INVALID_INPUT", "auto_confirm_deadline must be an RFC3339 timestamp")
 			return
 		}
 		detail = &domain.TransactionGoods{
@@ -64,7 +64,7 @@ func (h *TransactionGoodsHandler) LockFundsGoodsHandler(c *gin.Context) {
 		req.IsRekberPay, req.SellerTier, req.ShippingFee, req.PaymentMethod, req.IdempotencyKey, detail,
 	)
 	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 		return
 	}
 	c.JSON(http.StatusCreated, gin.H{"message": "Goods escrow initialized", "data": tx})
@@ -75,12 +75,12 @@ func (h *TransactionGoodsHandler) ReleaseGoodsHandler(c *gin.Context) {
 		TransactionID string `json:"transaction_id" binding:"required,uuid4"`
 	}
 	if err := c.ShouldBindJSON(&req); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusBadRequest, "INVALID_INPUT", err.Error())
 		return
 	}
 
 	if err := h.goodsUsecase.ReleaseFundsGoods(c.Request.Context(), req.TransactionID); err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		RespondError(c, http.StatusInternalServerError, "INTERNAL_ERROR", err.Error())
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"message": "Goods escrow funds credited to seller wallet"})

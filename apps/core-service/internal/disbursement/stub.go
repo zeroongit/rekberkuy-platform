@@ -1,3 +1,5 @@
+// Deprecated: akan dihapus di v1.1.0
+// Gunakan AdminDisbursementUsecase sebagai gantinya (ADR-0002)
 package disbursement
 
 import (
